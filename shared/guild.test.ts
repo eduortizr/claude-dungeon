@@ -20,6 +20,15 @@ describe('guild', () => {
     expect(classOfAgentType(`${PLUGIN_NAME}:mestre`)).toBe('mercenario')
   })
 
+  it('maps a project agent named <class>-<role> to its class', () => {
+    expect(classOfAgentType('ladino-pesquisador')).toBe('ladino')
+    expect(classOfAgentType('bardo-roteirista')).toBe('bardo')
+    expect(classOfAgentType('clerigo-qa')).toBe('clerigo')
+    expect(classOfAgentType('mago-editor')).toBe('mago')
+    expect(classOfAgentType('mestre-qualquer')).toBe('mercenario')
+    expect(classOfAgentType('code-reviewer')).toBe('mercenario')
+  })
+
   it('gives a session the same name every time', () => {
     expect(heroNameFor('abc')).toBe(heroNameFor('abc'))
   })

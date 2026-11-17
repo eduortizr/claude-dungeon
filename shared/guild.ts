@@ -45,14 +45,19 @@ export const HERO_NAMES = [
   'Quilla', 'Rurik', 'Sylas', 'Thalia', 'Ulric', 'Vesna', 'Wren', 'Yara', 'Zoltan',
 ] as const
 
-/** Maps a subagent type (`guild:ladino`, `Explore`, ...) to the class that represents it. */
+/**
+ * Maps a subagent type to the class that represents it: `guild:ladino`, a built-in (`Explore`), or a
+ * project's own agent named after a class, `<class>-<role>` (`ladino-pesquisador`, `bardo-roteirista`),
+ * so a project can give a class its own tools and still show up as that class on the map.
+ */
 export function classOfAgentType(type: string | undefined): ClassId {
   if (!type) return 'guerreiro'
   const prefix = `${PLUGIN_NAME}:`
-  if (type.startsWith(prefix)) {
-    const id = type.slice(prefix.length) as ClassId
-    if (id in GUILD && id !== 'mestre') return id
-  }
+  const isClass = (id: string): id is ClassId => id in GUILD && id !== 'mestre' && id !== 'mercenario'
+  const name = type.startsWith(prefix) ? type.slice(prefix.length) : type
+  if (isClass(name)) return name
+  const roleOf = /^([a-z]+)-[\w-]+$/.exec(name)?.[1]
+  if (roleOf && isClass(roleOf)) return roleOf
   const builtins: Record<string, ClassId> = {
     Explore: 'ladino',
     Plan: 'mago',
