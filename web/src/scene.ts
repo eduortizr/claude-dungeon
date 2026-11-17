@@ -39,7 +39,7 @@ import { GROUND_PROPS, TARGETS, drawProp } from './props'
 import { FLOOR, MONSTERS, TILE_SIZE, drawTile, isDrawnFloor } from './tiles'
 
 const T = TILE_SIZE
-const VOID = '#120d16'
+const VOID = '#2b2328'
 const BUBBLE_TIME = 5
 /** Seconds between rounds at a game table, and how long a result stays on the table. */
 const ROUND_EVERY = 4.5
@@ -764,6 +764,8 @@ export class Scene {
       ctx.fillRect(px + ((x * 5 + y * 3) % 12) + 2, py, 1, T)
       ctx.fillStyle = '#7d5636'
       ctx.fillRect(px + Math.floor(n(3) * 12), py + Math.floor(n(4) * 4) * 4, 3, 1)
+    } else if (tile === FLOOR.rock) {
+      this.drawRock(ctx, x, y, n)
     } else if (tile === FLOOR.gold) {
       ctx.fillStyle = '#6b5222'
       ctx.fillRect(px, py, T, T)
@@ -776,6 +778,67 @@ export class Scene {
         ctx.fillStyle = '#f2c544'
         ctx.fillRect(px + 3 + Math.floor(n(6) * 9), py + 3 + Math.floor(n(7) * 9), 2, 1)
       }
+    }
+  }
+
+  /** Rock: a textured stone tile, now and then a boulder, a crystal or a bit of moss near the forest. */
+  private drawRock(ctx: CanvasRenderingContext2D, x: number, y: number, n: (k: number) => number): void {
+    const px = x * T
+    const py = y * T
+    const near = (dx: number, dy: number) => {
+      const f = this.map.floor[(y + dy) * this.map.cols + (x + dx)]
+      return f !== undefined && f !== FLOOR.rock && x + dx >= 0 && x + dx < this.map.cols
+    }
+    ctx.fillStyle = '#3a3036'
+    ctx.fillRect(px, py, T, T)
+    // Lighter stones and dark cracks, placed by the tile's own noise.
+    for (let k = 0; k < 4; k++) {
+      ctx.fillStyle = k % 2 ? '#463b42' : '#42373e'
+      ctx.fillRect(px + Math.floor(n(k + 10) * 12), py + Math.floor(n(k + 20) * 12), 3 + Math.floor(n(k + 30) * 3), 2 + Math.floor(n(k + 40) * 2))
+    }
+    ctx.fillStyle = '#2a2227'
+    ctx.fillRect(px + Math.floor(n(50) * 13), py + Math.floor(n(51) * 13), 3, 1)
+    ctx.fillRect(px + Math.floor(n(52) * 14), py + Math.floor(n(53) * 13), 1, 3)
+    // A darker rim where the rock meets a floor, so rooms and the cave read as dug out of it.
+    ctx.fillStyle = 'rgba(20, 14, 18, 0.45)'
+    if (near(0, 1)) ctx.fillRect(px, py + 13, T, 3)
+    if (near(0, -1)) ctx.fillRect(px, py, T, 2)
+    if (near(1, 0)) ctx.fillRect(px + 14, py, 2, T)
+    if (near(-1, 0)) ctx.fillRect(px, py, 2, T)
+
+    const roll = n(60)
+    if (roll < 0.07) {
+      // A boulder.
+      ctx.fillStyle = '#2a2227'
+      ctx.fillRect(px + 3, py + 13, 10, 2)
+      ctx.fillStyle = '#5a4d54'
+      ctx.fillRect(px + 3, py + 6, 10, 8)
+      ctx.fillRect(px + 5, py + 4, 6, 2)
+      ctx.fillStyle = '#6e6067'
+      ctx.fillRect(px + 5, py + 6, 4, 2)
+    } else if (roll < 0.1) {
+      // A crystal cluster, purple or teal.
+      const [base, light] = n(61) < 0.5 ? ['#7d4fd6', '#c9b0ff'] : ['#2f9fb0', '#9fe8f0']
+      ctx.fillStyle = base
+      ctx.fillRect(px + 6, py + 5, 3, 9)
+      ctx.fillRect(px + 9, py + 8, 2, 6)
+      ctx.fillRect(px + 4, py + 9, 2, 5)
+      ctx.fillStyle = light
+      ctx.fillRect(px + 6, py + 5, 1, 4)
+      ctx.fillRect(px + 9, py + 8, 1, 2)
+    } else if (roll < 0.13) {
+      // A small stalagmite.
+      ctx.fillStyle = '#54474e'
+      ctx.fillRect(px + 7, py + 4, 2, 4)
+      ctx.fillRect(px + 6, py + 8, 4, 4)
+      ctx.fillRect(px + 5, py + 12, 6, 2)
+      ctx.fillStyle = '#6e6067'
+      ctx.fillRect(px + 7, py + 5, 1, 7)
+    }
+    if (y >= this.map.forestY - 1 && n(62) < 0.5) {
+      // Moss where the rock meets the forest.
+      ctx.fillStyle = '#3f6b3a'
+      ctx.fillRect(px + Math.floor(n(63) * 10), py + 10 + Math.floor(n(64) * 4), 5, 2)
     }
   }
 

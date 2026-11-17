@@ -545,6 +545,14 @@ export function buildMap(projects: readonly string[]): GameMap {
     }
   }
 
+  // Whatever is left is solid rock, so the map has no black gaps.
+  for (let i = 0; i < size; i++) {
+    if (floor[i] === -1) {
+      floor[i] = FLOOR.rock
+      blocked[i] = 1
+    }
+  }
+
   return {
     cols,
     rows,

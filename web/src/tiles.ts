@@ -40,6 +40,8 @@ export const FLOOR = {
   water: 1002,
   wood: 1003,
   gold: 1004,
+  /** Solid rock around and between everything: no black gaps on the map. */
+  rock: 1005,
 } as const
 
 export function isDrawnFloor(tile: number): boolean {
