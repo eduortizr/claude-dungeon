@@ -22,6 +22,14 @@ Mapa pixel art (tema RPG) das sessões do Claude Code e uma guilda de subagentes
 - Arquimago (`guild:arquimago`, Fable 5.2): só escalação; o roteador nunca escolhe (teste em `router.test.ts`).
 - App Electron em `desktop/`: `startServer()` (`server/src/app.ts`) roda dentro do app; janela + bandeja; "Iniciar com o Windows" abre com `--hidden`. `npm run app` (sem instalar), `npm run app:dist` (instalador NSIS em `desktop/release/`, ~96 MB, sem assinatura de código). A versão do `electron` fica fixa no `desktop/package.json` (o electron-builder recusa faixa `^`). Dados do app em `%APPDATA%\Claude Dungeon\world.json`.
 
+## Salas novas, floresta e Câmara de ouro (2026-11-17, pedido do aluno)
+
+- Biblioteca (projeto `Estudos`) e Câmara de ouro (projeto `Invest`) ocupam duas antigas câmaras seladas: `GUILD_ROOMS[].project` em `web/src/map.ts`; esses projetos não ganham sala própria.
+- Floresta abaixo da dungeon (heróis entram e saem pela borda esquerda): parado 10–25 min → floresta, > 25 min → caverna (`placement.ts`). Árvores decididas por `noise(x, y)`, então não mudam quando o mapa alarga.
+- O que a folha do Kenney não tem é desenhado em `web/src/props.ts` (pixel art com retângulos); Velho Mercador e Alquimista são sprites próprios em `web/src/characters.ts` (ids negativos). Residentes (taverneiro, alquimista, mercador) nunca saem da sala.
+- Falas: D&D, conversas em dupla, conversas da guilda, floresta e residentes em `web/src/games.ts`.
+- Notícias: `server/src/market.ts` lê o briefing do agente do Invest (`Invest/dados/overlay_briefing.json`, gravado por `bot/agente.py`). Neste PC a pasta está em `data/config.json` e em `%APPDATA%\Claude Dungeon\config.json` (`marketDir`), fora do git.
+
 ## Observações
 
 - No Windows, parar o `npm run dev` pelo harness pode deixar o `tsx` e o `vite` órfãos nas portas: conferir com `Get-NetTCPConnection -LocalPort 4747` e parar só esses PIDs.

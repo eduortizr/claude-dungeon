@@ -11,10 +11,16 @@ Veja suas sessões do [Claude Code](https://claude.com/claude-code) como uma gui
 
   | Sala | Quem está lá | O que acontece |
   | --- | --- | --- |
-  | 🍺 Taverna | acabou uma missão há menos de 2 min | conta a vitória com os dados reais ("Missão cumprida em 3min: corrige o login") |
-  | 🎲 Sala de jogos | parado de 2 a 10 min, em duplas | dados, cartas ou queda de braço, com placar e provocações |
-  | 🔥 Caverna | parado há mais de 10 min | dorme perto da fogueira (zZz) |
-  | ⚔️ Sala de treinamento | os subagentes da guilda | cada classe treina no seu boneco; quando é convocada, sai de lá até a sala do projeto e volta depois |
+  | 🍺 Taverna | acabou uma missão há menos de 2 min | conta a vitória com os dados reais ("Missão cumprida em 3min: corrige o login"); lareira, taverneiro e conversa fiada |
+  | 🎲 Sala de jogos | parado de 2 a 10 min, em duplas | uma campanha de **Masmorras & Dragões** (o mestre narra, o jogador rola o d20 contra a CD), dados, cartas ou queda de braço, com placar e provocações |
+  | 🌲 Floresta | parado de 10 a 25 min | lá fora, depois do portão: pesca no lago, colhe ervas, descansa no tronco |
+  | 🔥 Caverna | parado há mais de 25 min | dorme perto da fogueira (zZz) |
+  | ⚔️ Sala de treinamento | os subagentes da guilda | cada classe treina no seu alvo: o Mago e o Arquimago lançam magia no cristal e no orbe, o Ladino arremessa adagas, o Bardo atira no alvo, Guerreiro e Clérigo batem nos bonecos |
+  | 📚 Biblioteca | sessões do projeto `Estudos` | estantes, laboratório, caldeirão e um monstro meio dissecado; a Alquimista vive lá |
+  | 💰 Câmara de ouro | sessões do projeto `Invest` | o Velho Mercador nunca para: lê em voz alta as notícias da bolsa de um briefing local (ver abaixo) |
+
+- Os heróis parados conversam entre si, e os membros da guilda também, entre um treino e outro.
+- **Câmara de ouro e notícias:** o servidor lê `overlay_briefing.json` (e `overlay_status.json`, se houver) de uma pasta indicada em `CLAUDE_DUNGEON_MARKET_DIR` ou em `marketDir` num `config.json` ao lado do `world.json` (`data/` no modo dev, `%APPDATA%\Claude Dungeon\` no app). Só manchetes, títulos e tom vão para o mapa. Clicar no mercador mostra as notícias no painel. Os projetos de cada sala ficam em `GUILD_ROOMS` (`web/src/map.ts`).
 
 - Clicar num herói abre o **painel lateral**:
   - status ("Em combate há 3 min");
