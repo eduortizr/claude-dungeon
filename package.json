@@ -1,13 +1,14 @@
 {
   "name": "claude-dungeon",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Watch your Claude Code sessions as an RPG guild exploring a pixel-art dungeon.",
   "type": "module",
   "license": "MIT",
   "workspaces": [
     "server",
-    "web"
+    "web",
+    "desktop"
   ],
   "scripts": {
     "dev": "concurrently -k -n server,web -c yellow,cyan \"npm run dev -w server\" \"npm run dev -w web\"",
@@ -15,7 +16,9 @@
     "start": "npm run build && npm run start -w server",
     "demo": "node scripts/demo.mjs",
     "test": "vitest run",
-    "typecheck": "tsc -p server && tsc -p web"
+    "typecheck": "tsc -p server && tsc -p web && tsc -p desktop",
+    "app": "npm run build -w web && npm run start -w desktop",
+    "app:dist": "npm run build -w web && npm run dist -w desktop"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

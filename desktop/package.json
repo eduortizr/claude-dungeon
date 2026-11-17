@@ -1,0 +1,45 @@
+{
+  "name": "@claude-dungeon/desktop",
+  "productName": "Claude Dungeon",
+  "version": "0.2.0",
+  "description": "Claude Dungeon desktop app: the map in its own window, with the server inside.",
+  "private": true,
+  "main": "dist/main.cjs",
+  "scripts": {
+    "bundle": "node build.mjs",
+    "start": "node build.mjs && electron .",
+    "dist": "node build.mjs && electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "37.10.3",
+    "electron-builder": "^26.0.12",
+    "esbuild": "^0.25.5"
+  },
+  "build": {
+    "appId": "dev.claude-dungeon.app",
+    "productName": "Claude Dungeon",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "assets/**"
+    ],
+    "extraResources": [
+      {
+        "from": "../web/dist",
+        "to": "web"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "Claude-Dungeon-Setup-${version}.${ext}"
+    }
+  },
+  "author": "Claude Dungeon contributors"
+}
