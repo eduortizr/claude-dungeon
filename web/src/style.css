@@ -390,3 +390,57 @@ img {
     width: auto;
   }
 }
+
+/* The merchant's card: the day's market news. */
+.news,
+.highlights {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 17px;
+}
+
+.news li {
+  padding-left: 12px;
+  border-left: 2px solid var(--gold);
+}
+
+.highlights li {
+  padding: 8px 10px;
+  background: var(--panel-2);
+  border-radius: 6px;
+  border-left: 3px solid var(--muted);
+}
+
+.highlights li.positivo {
+  border-left-color: var(--idle);
+}
+
+.highlights li.negativo {
+  border-left-color: #e8462b;
+}
+
+.highlights li p {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
+.highlights .tone {
+  font-size: 13px;
+}
+
+.highlights li.positivo .tone {
+  color: var(--idle);
+}
+
+.highlights li.negativo .tone {
+  color: #e8462b;
+}
+
+.disclaimer {
+  font-size: 15px;
+  margin-top: 4px;
+}

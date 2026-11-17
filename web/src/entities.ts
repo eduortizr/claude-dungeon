@@ -4,7 +4,7 @@
  * Positions are in tiles, as floats while walking.
  */
 import type { ClassId } from '../../shared/guild'
-import type { GameMap } from './map'
+import type { GameMap, ResidentId } from './map'
 import { findPath, type Point } from './pathfinding'
 
 const WALK_SPEED = 5 // tiles per second
@@ -38,6 +38,8 @@ export class Actor {
   place?: string
   /** Guild class of a party member or a training-room member. */
   cls?: ClassId
+  /** Set for the people who live in a room (taverneiro, alquimista, mercador). */
+  residentId?: ResidentId
   private path: Point[] = []
   private target?: Point
 
@@ -73,6 +75,15 @@ export class Actor {
     this.target = target
     // From the next tile on the way if mid-step, so the walk stays on the grid.
     this.path = findPath(map, this.tile, target) ?? []
+  }
+
+  /** Skips the walk: stands at the current target right away (when the map first opens). */
+  arrive(): void {
+    const end = this.path[this.path.length - 1]
+    if (!end) return
+    this.x = end.x
+    this.y = end.y
+    this.path = []
   }
 
   attack(toward: Point): void {
@@ -152,9 +163,18 @@ export class Monster {
 }
 
 export interface Effect {
-  kind: 'slash' | 'damage' | 'poof' | 'xp' | 'z'
+  /**
+   * slash/poof: a hit and a kill; damage/xp/z: floating text; bolt: a spell,
+   * dagger or arrow flying from (x, y) to (tx, ty); coin/spark: work in the
+   * Câmara de ouro and the Biblioteca.
+   */
+  kind: 'slash' | 'damage' | 'poof' | 'xp' | 'z' | 'bolt' | 'coin' | 'spark'
   x: number
   y: number
+  tx?: number
+  ty?: number
+  /** For a bolt: what flies (a spell's orb, a dagger, an arrow). */
+  shape?: 'orb' | 'dagger' | 'arrow'
   age: number
   ttl: number
   text?: string

@@ -4,7 +4,7 @@ import type { WorldState } from '../../shared/types'
 import { Camera } from './camera'
 import { modelName } from './format'
 import { Panel } from './panel'
-import { Scene } from './scene'
+import { Scene, type Selection } from './scene'
 import { setSheet, spriteUrl } from './sprites'
 import { connect, type ConnectionStatus } from './stream'
 import { whiteSheet } from './tiles'
@@ -30,14 +30,19 @@ let world: WorldState = { heroes: {}, updatedAt: 0 }
 const panel = new Panel(document.querySelector('#panel')!, () => select(undefined))
 document.querySelector('#panel')!.addEventListener('rerender', () => renderPanel())
 
-function select(heroId: string | undefined): void {
-  scene.selectedHeroId = heroId
+function select(selection: Selection | undefined): void {
+  scene.selected = selection
   renderPanel()
 }
 
 function renderPanel(): void {
-  const hero = scene.selectedHeroId ? world.heroes[scene.selectedHeroId] : undefined
-  panel.render(hero, Date.now())
+  const selection = scene.selected
+  if (selection?.kind === 'resident') {
+    panel.renderResident(selection.id, scene.market, Date.now())
+    return
+  }
+  const hero = selection ? world.heroes[selection.id] : undefined
+  panel.render(hero, Date.now(), hero ? scene.placeOf(hero.id) : undefined)
 }
 
 // ---- top bar and legend ----------------------------------------------------
@@ -102,14 +107,21 @@ function syncScene(): void {
   }
 }
 
-connect(next => {
-  world = next
-  syncScene()
-  renderSummary()
-  renderPanel()
-}, setConnection)
+connect(
+  next => {
+    world = next
+    syncScene()
+    renderSummary()
+    renderPanel()
+  },
+  setConnection,
+  feed => {
+    scene.setMarket(feed)
+    renderPanel()
+  },
+)
 
-// Every second, even with no new events: idle heroes move on (taverna -> jogos -> caverna)
+// Every second, even with no new events: idle heroes move on (taverna -> jogos -> floresta -> caverna)
 // with time alone, and the panel's "há X s" timers tick.
 setInterval(() => {
   syncScene()

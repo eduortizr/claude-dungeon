@@ -25,6 +25,7 @@ export class Camera {
     this.x = (worldWidth - viewWidth / this.zoom) / 2
     this.y = (worldHeight - viewHeight / this.zoom) / 2
     if (this.x > 0) this.x = 0 // wider than the screen: start from the cave on the left
+    if (this.y > 0) this.y = 0 // taller: start from the rooms; the forest's far edge can wait
   }
 
   toWorld(screenX: number, screenY: number): Point {
