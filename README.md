@@ -83,7 +83,7 @@ npm run demo -- --loop   # sem parar
 Instale o plugin a partir deste repositório (ele é o próprio marketplace):
 
 ```bash
-claude plugin marketplace add <caminho-ou-usuario/repo>
+claude plugin marketplace add eduortizr/claude-dungeon   # ou o caminho de um clone local
 claude plugin install guild@claude-dungeon
 ```
 
