@@ -43,6 +43,19 @@ const RESIDENT_INFO: Record<ResidentId, { name: string; sprite: number; role: st
     about:
       'Cuida da biblioteca e do laboratório: livros, poções e um monstro aberto na mesa de dissecação. As sessões do projeto Estudos trabalham aqui.',
   },
+  mestre: {
+    name: 'Mestre do Claude',
+    sprite: CUSTOM_SPRITES.mestre,
+    role: 'Sala de jogos',
+    about:
+      'O próprio Claude, de chapéu e cajado. Conversa com quem está parado e, de vez em quando, mestra uma partida de Masmorras & Dragões. Seu dragãozinho nunca sai de perto.',
+  },
+  menestrel: {
+    name: 'Menestrel',
+    sprite: CUSTOM_SPRITES.menestrel,
+    role: 'Taverna',
+    about: 'Toca o alaúde no palquinho da taverna enquanto os heróis comemoram. Aceita pedidos, desde que rimem.',
+  },
   mercador: {
     name: 'Velho Mercador',
     sprite: CUSTOM_SPRITES.mercador,

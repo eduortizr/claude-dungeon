@@ -168,3 +168,9 @@ npm run typecheck
 - Escalação automática para o Arquimago quando um subagente falha duas vezes na mesma missão.
 - Instalador para macOS e Linux, e assinatura de código no Windows.
 - Sons (golpe, vitória) e um modo "TV" que segue o herói ativo.
+
+### Mais vida no mapa
+
+- **Arenas:** as salas de projeto têm o tamanho de duas salas, com espaço para uma dúzia de lutadores sem sobrepor; o monstro revida, às vezes surge um **chefe** gigante, e há tochas, espinhos, teias e ossos.
+- **Guilda em movimento:** quem não está em missão alterna a cada minuto entre treino, taverna, sala de jogos e floresta (`web/src/routine.ts`).
+- **Vida nas salas:** portas que abrem e fecham, o **Mestre do Claude** (com um dragãozinho) mestrando Masmorras & Dragões na sala de jogos, um **menestrel** tocando na taverna e animais (cervo, coelho, raposa, patos, peixes) na floresta.

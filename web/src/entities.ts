@@ -40,6 +40,12 @@ export class Actor {
   cls?: ClassId
   /** Set for the people who live in a room (taverneiro, alquimista, mercador). */
   residentId?: ResidentId
+  /** Seconds left of the white flash after being hit by the monster. */
+  hurt = 0
+  /** Knockback in pixels, easing back to 0. */
+  shove: Point = { x: 0, y: 0 }
+  /** A little hop to the beat (the taverna's minstrel plays), in pixels. */
+  hop = 0
   private path: Point[] = []
   private target?: Point
 
@@ -94,6 +100,11 @@ export class Actor {
 
   update(dt: number): void {
     this.lunge = Math.max(0, this.lunge - dt)
+    this.hurt = Math.max(0, this.hurt - dt)
+    if (this.shove.x !== 0 || this.shove.y !== 0) {
+      const keep = Math.max(0, 1 - dt * 9)
+      this.shove = Math.abs(this.shove.x) + Math.abs(this.shove.y) < 0.2 ? { x: 0, y: 0 } : { x: this.shove.x * keep, y: this.shove.y * keep }
+    }
     const next = this.path[0]
     if (!next) {
       this.walkTime = 0
@@ -119,6 +130,11 @@ export class Actor {
 
   /** Pixel offset of the current frame: a hop while walking, a lunge while attacking. */
   get offset(): Point {
+    const o = this.baseOffset
+    return { x: o.x + this.shove.x, y: o.y + this.shove.y - this.hop }
+  }
+
+  private get baseOffset(): Point {
     if (this.lunge > 0) {
       const t = Math.sin((this.lunge / LUNGE_TIME) * Math.PI) * 5
       const dx = this.lungeTo.x - this.x
@@ -131,10 +147,26 @@ export class Actor {
   }
 }
 
+/** Every third monster of a long fight is a boss: twice the size, with a lot more hit points. */
+export function isBossWave(kills: number): boolean {
+  return kills > 0 && kills % 3 === 0
+}
+
 export class Monster {
   static readonly MAX_HP = 8
+  static readonly BOSS_HP = 22
+  static readonly CHARGE_TIME = 0.4
   hp = Monster.MAX_HP
+  maxHp = Monster.MAX_HP
+  isBoss = false
+  /** Monsters beaten in this fight; the room's fight ends (and this resets) when everyone leaves. */
+  kills = 0
   flash = 0
+  /** Counts down while the monster lunges at a fighter. */
+  charge = 0
+  chargeTo: Point = { x: 0, y: 0 }
+  /** A blow the monster has started: lands at `time` on the actor `actorId`. */
+  blow?: { time: number; actorId: string }
   /** Counts down after a kill; the monster respawns when it reaches 0. */
   respawnIn = 0
   generation = 0
@@ -147,10 +179,13 @@ export class Monster {
 
   update(dt: number): boolean {
     this.flash = Math.max(0, this.flash - dt)
+    this.charge = Math.max(0, this.charge - dt)
     if (this.respawnIn > 0) {
       this.respawnIn -= dt
       if (this.respawnIn <= 0) {
-        this.hp = Monster.MAX_HP
+        this.isBoss = isBossWave(this.kills)
+        this.maxHp = this.isBoss ? Monster.BOSS_HP : Monster.MAX_HP
+        this.hp = this.maxHp
         return true // ask for a new look
       }
     }
@@ -160,15 +195,32 @@ export class Monster {
   get isAlive(): boolean {
     return this.respawnIn <= 0
   }
+
+  lungeAt(toward: Point): void {
+    this.charge = Monster.CHARGE_TIME
+    this.chargeTo = toward
+  }
+
+  /** Pixels the monster has advanced toward its target this frame: out and back. */
+  get advance(): Point {
+    if (this.charge <= 0) return { x: 0, y: 0 }
+    const dx = this.chargeTo.x - this.at.x
+    const dy = this.chargeTo.y - this.at.y
+    const length = Math.hypot(dx, dy) || 1
+    const reach = Math.min(length * 16 * 0.7, this.isBoss ? 22 : 14) * Math.sin((this.charge / Monster.CHARGE_TIME) * Math.PI)
+    return { x: (dx / length) * reach, y: (dy / length) * reach }
+  }
 }
 
 export interface Effect {
   /**
    * slash/poof: a hit and a kill; damage/xp/z: floating text; bolt: a spell,
    * dagger or arrow flying from (x, y) to (tx, ty); coin/spark: work in the
-   * Câmara de ouro and the Biblioteca.
+   * Câmara de ouro and the Biblioteca; burst: a handful of pixels flying out
+   * of a hit (`color`); note: a musical note floating up from the minstrel
+   * (`text` is its shape); splash: ripples where a fish jumped.
    */
-  kind: 'slash' | 'damage' | 'poof' | 'xp' | 'z' | 'bolt' | 'coin' | 'spark'
+  kind: 'slash' | 'damage' | 'poof' | 'xp' | 'z' | 'bolt' | 'coin' | 'spark' | 'burst' | 'note' | 'splash'
   x: number
   y: number
   tx?: number

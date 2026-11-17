@@ -28,6 +28,8 @@ import { FLOOR, POTIONS, STAFFS, TILE } from './tiles'
 
 export const ROOM_W = 11
 export const ROOM_H = 10
+/** A project room is an arena as wide as two guild rooms and the wall between them: space for a dozen fighters. */
+export const ARENA_W = ROOM_W * 2 + 1
 const CAVE_W = 16
 const CORRIDOR_H = 3
 const FOREST_H = 11
@@ -109,6 +111,14 @@ export type PropKind =
   | 'tradetable'
   | 'ticker'
   | 'scale'
+  // decoration
+  | 'torch'
+  | 'spikes'
+  | 'cobweb'
+  | 'bones'
+  | 'plant'
+  | 'fern'
+  | 'stage'
 
 export interface Prop {
   kind: PropKind
@@ -118,7 +128,7 @@ export interface Prop {
   variant: number
 }
 
-export type ResidentId = 'taverneiro' | 'alquimista' | 'mercador'
+export type ResidentId = 'taverneiro' | 'alquimista' | 'mercador' | 'mestre' | 'menestrel'
 
 /** Someone who never leaves their room: they work there all day. */
 export interface Resident {
@@ -145,6 +155,8 @@ export interface RoomLayout {
   project?: string
   x: number
   y: number
+  /** Width in tiles: ROOM_W, or ARENA_W for a project's arena. */
+  w: number
   isTop: boolean
   door: Point
   /** Project rooms: where the monster stands. */
@@ -155,6 +167,10 @@ export interface RoomLayout {
   slots: Point[]
   tables: GameTable[]
   stations: Station[]
+  /** Where a guild member on its break stands (taverna, sala de jogos). */
+  guests: Point[]
+  /** The tile guests face (the dartboard, the stage). */
+  guestFacing?: Point
 }
 
 export interface GameMap extends Grid {
@@ -168,6 +184,11 @@ export interface GameMap extends Grid {
   fire: Point
   seats: Point[]
   gate: Point
+  /** Every door that opens and closes: the rooms' and the cave's gate. */
+  doors: Point[]
+  /** The pond's center, in tiles, and the trail's row at a column (for the wildlife). */
+  pond: Point
+  trailAt(x: number): number
   /** Where heroes come in from and go out to: the forest's edge. */
   spawn: Point
   corridorY: number
@@ -209,9 +230,18 @@ const TRAINING: Record<(typeof GUILD_MEMBERS)[number], { target: [number, number
 export function buildMap(projects: readonly string[]): GameMap {
   const own = projects.filter(p => !PROJECT_HOMES.has(p))
   const named = [...GUILD_ROOMS, ...own.map(name => ({ kind: 'project' as RoomKind, name, project: undefined }))]
-  const roomCount = Math.max(MIN_ROOMS, named.length + (named.length % 2))
-  const columns = Math.ceil(roomCount / 2)
-  const cols = FIRST_ROOM_X + columns * (ROOM_W + 1) + 1
+  const roomCount = Math.max(MIN_ROOMS, named.length)
+  // Rooms alternate above/below the corridor; each side lays its own rooms left to right.
+  const roomX: number[] = []
+  const roomW: number[] = []
+  const cursor = [FIRST_ROOM_X, FIRST_ROOM_X]
+  for (let i = 0; i < roomCount; i++) {
+    const side = i % 2
+    roomW.push(named[i]?.kind === 'project' ? ARENA_W : ROOM_W)
+    roomX.push(cursor[side]!)
+    cursor[side] = cursor[side]! + roomW[i]! + 1
+  }
+  const cols = Math.max(cursor[0]!, cursor[1]!) + 1
   const corridorY = 1 + ROOM_H
   const dungeonRows = corridorY + CORRIDOR_H + ROOM_H + 1
   const forestY = dungeonRows - 1
@@ -226,6 +256,10 @@ export function buildMap(projects: readonly string[]): GameMap {
   const random = rng(hashString(own.join('|')))
   const props: Prop[] = []
   const residents: Resident[] = []
+  const doors: Point[] = []
+  const trailRow = forestY + 3
+  const wind = (x: number) => trailRow + Math.round(Math.sin(x * 0.23) * 0.9)
+  let pond: Point = { x: 0, y: 0 }
 
   const setFloor = (x: number, y: number, tile: number) => (floor[at(x, y)] = tile)
   const setDeco = (x: number, y: number, tile: number, solid = true) => {
@@ -263,7 +297,7 @@ export function buildMap(projects: readonly string[]): GameMap {
     deco[at(gate.x, y)] = -1
     blocked[at(gate.x, y)] = 0
   }
-  deco[at(gate.x, gate.y + 1)] = TILE.door
+  doors.push({ x: gate.x, y: gate.y + 1 }) // a door the renderer opens and closes
 
   // Supplies around the camp.
   const supplies: [number, number, number][] = [
@@ -274,6 +308,14 @@ export function buildMap(projects: readonly string[]): GameMap {
     [fire.x - 4, fire.y + 5, TILE.barrel],
   ]
   for (const [x, y, tile] of supplies) if (floor[at(x, y)] === TILE.dirt) setDeco(x, y, tile)
+  // Bones and a few ferns on the cave floor; by tile noise, so the rooms' random sequence is untouched.
+  for (let y = 2; y < gate.y - 1; y++) {
+    for (let x = 2; x < CAVE_W - 1; x++) {
+      if (floor[at(x, y)] !== TILE.dirt || blocked[at(x, y)] || deco[at(x, y)]! >= 0 || x === gate.x) continue
+      if (noise(x, y, 5) < 0.025) addProp('bones', { x, y }, false, Math.floor(noise(x, y, 6) * 3))
+      else if (noise(x, y, 7) < 0.02) addProp('fern', { x, y }, false)
+    }
+  }
 
   // ---- the corridor, from the cave mouth to the last room ----
   for (let y = corridorY; y < corridorY + CORRIDOR_H; y++) {
@@ -288,7 +330,9 @@ export function buildMap(projects: readonly string[]): GameMap {
   const rooms: RoomLayout[] = []
   for (let i = 0; i < roomCount; i++) {
     const isTop = i % 2 === 0
-    const x = FIRST_ROOM_X + Math.floor(i / 2) * (ROOM_W + 1)
+    const x = roomX[i]!
+    const w = roomW[i]!
+    const cx = Math.floor(w / 2)
     const y = isTop ? 1 : corridorY + CORRIDOR_H
     const { kind, name, project } = named[i] ?? { kind: 'sealed' as RoomKind, name: '', project: undefined }
     /** Local (lx, ly) -> map tile; ly 0 is the back wall, ly 9 the door's wall. */
@@ -298,7 +342,7 @@ export function buildMap(projects: readonly string[]): GameMap {
       setDeco(p.x, p.y, tile, solid)
     }
     const prop = (kind: PropKind, lx: number, ly: number, solid = true, variant = 0) => addProp(kind, P(lx, ly), solid, variant)
-    const door = P(5, ROOM_H - 1)
+    const door = P(cx, ROOM_H - 1)
     const floorTile =
       kind === 'taverna' || kind === 'jogos' || kind === 'estudos'
         ? () => FLOOR.wood
@@ -307,8 +351,8 @@ export function buildMap(projects: readonly string[]): GameMap {
           : sand
 
     for (let ty = y; ty < y + ROOM_H; ty++) {
-      for (let tx = x; tx < x + ROOM_W; tx++) {
-        const isWall = ty === y || ty === y + ROOM_H - 1 || tx === x || tx === x + ROOM_W - 1
+      for (let tx = x; tx < x + w; tx++) {
+        const isWall = ty === y || ty === y + ROOM_H - 1 || tx === x || tx === x + w - 1
         if (isWall) {
           setFloor(tx, ty, TILE.wall)
           blocked[at(tx, ty)] = 1
@@ -320,6 +364,7 @@ export function buildMap(projects: readonly string[]): GameMap {
     if (kind !== 'sealed') {
       blocked[at(door.x, door.y)] = 0
       setFloor(door.x, door.y, floorTile())
+      doors.push(door)
     }
 
     const room: RoomLayout = {
@@ -328,13 +373,15 @@ export function buildMap(projects: readonly string[]): GameMap {
       project,
       x,
       y,
+      w,
       isTop,
       door,
-      monster: P(5, 3),
-      focus: P(5, 3),
+      monster: P(cx, 3),
+      focus: P(cx, 3),
       slots: [],
       tables: [],
       stations: [],
+      guests: [],
     }
 
     if (kind === 'taverna') {
@@ -357,7 +404,14 @@ export function buildMap(projects: readonly string[]): GameMap {
         prop('mugs', lx, ly, true, lx + ly)
       }
       // Spots two tiles apart come first, so a few drinkers' name tags don't overlap.
-      room.slots = [P(2, 3), P(6, 3), P(2, 6), P(6, 6), P(8, 3), P(4, 6), P(8, 6), P(4, 3), P(3, 3)]
+      room.slots = [P(2, 3), P(6, 3), P(2, 6), P(6, 6), P(8, 3), P(4, 6), P(4, 8), P(4, 3), P(3, 3)]
+      // The minstrel's little stage in the corner, and a plant in the other.
+      prop('stage', 8, 7, false)
+      residents.push({ id: 'menestrel', at: P(8, 7), workAt: P(7, 7) })
+      blocked[at(P(8, 7).x, P(8, 7).y)] = 1
+      prop('plant', 1, 8, true)
+      room.guests = [P(3, 8), P(7, 8)]
+      room.guestFacing = P(8, 7)
       for (const slot of room.slots.slice(0, 7)) setDeco(slot.x, slot.y, TILE.stool, false)
     } else if (kind === 'jogos') {
       deco(2, 0, TILE.banner)
@@ -369,6 +423,13 @@ export function buildMap(projects: readonly string[]): GameMap {
       deco(9, 1, TILE.crate)
       prop('d20', 1, 8, true)
       prop('d20', 9, 8, true, 1)
+      prop('plant', 1, 4, true, 1)
+      prop('plant', 9, 4, true)
+      // The Mestre do Claude runs the games from behind the tables, with his dragon.
+      residents.push({ id: 'mestre', at: P(5, 2), workAt: P(4, 2) })
+      blocked[at(P(5, 2).x, P(5, 2).y)] = 1
+      room.guests = [P(3, 2), P(7, 2)]
+      room.guestFacing = P(6, 0)
       for (const [lx, ly] of [[7, 6], [3, 3], [7, 3], [3, 6]] as const) {
         const center = P(lx, ly)
         setDeco(center.x, center.y, TILE.table)
@@ -400,6 +461,9 @@ export function buildMap(projects: readonly string[]): GameMap {
       prop('jars', 9, 7, true)
       prop('skull', 9, 8, true)
       deco(6, 0, TILE.banner)
+      prop('cobweb', 1, 1, false, isTop ? 0 : 2)
+      prop('cobweb', ROOM_W - 2, 1, false, isTop ? 1 : 3)
+      prop('fern', 1, 8, true)
       residents.push({ id: 'alquimista', at: P(7, 5), workAt: P(8, 5) })
       blocked[at(P(7, 5).x, P(7, 5).y)] = 1
       room.focus = P(3, 4)
@@ -429,12 +493,35 @@ export function buildMap(projects: readonly string[]): GameMap {
     } else {
       // Project room (or sealed): banners, loot in the corners, fighters by the door.
       deco(2, 0, TILE.banner)
-      deco(ROOM_W - 3, 0, TILE.banner)
+      deco(w - 3, 0, TILE.banner)
       deco(1, 1, random() < 0.5 ? TILE.chest : TILE.chestBig)
-      deco(ROOM_W - 2, 1, random() < 0.5 ? TILE.barrel : TILE.crate)
-      if (kind === 'sealed') deco(5, 4, TILE.tomb)
-      else blocked[at(room.monster.x, room.monster.y)] = 1
-      room.slots = [5, 6, 7].flatMap(ly => [0, -2, 2, -4, 4].map(d => P(5 + d, ly)))
+      deco(w - 2, 1, random() < 0.5 ? TILE.barrel : TILE.crate)
+      if (kind === 'sealed') {
+        deco(5, 4, TILE.tomb)
+        room.slots = [P(5, 6)] // behind the wall: nobody can get there
+      } else {
+        blocked[at(room.monster.x, room.monster.y)] = 1
+        // Torches on the back wall, spikes and bones on the floor: decoration only, nothing blocks the way.
+        for (const d of [-8, -4, 4, 8]) prop('torch', cx + d, 0, false)
+        for (const d of [-6, -5, 5, 6]) prop('spikes', cx + d, 2, false, d)
+        for (const d of [-9, 9]) prop('spikes', cx + d, 8, false, d)
+        // Cobwebs hang in the corners of the back wall (bit 0 = right, bit 1 = the wall is at the bottom).
+        prop('cobweb', 1, 1, false, isTop ? 0 : 2)
+        prop('cobweb', w - 2, 1, false, isTop ? 1 : 3)
+        prop('bones', 2, 7, false, 0)
+        prop('bones', w - 3, 5, false, 1)
+        prop('bones', cx - 3, 2, false, 2)
+        // The fighters' spots: staggered rows, nearest the monster first, so a crowd
+        // fans out around it and nobody shares a tile.
+        const spots: { p: Point; d: number }[] = []
+        for (let ly = 4; ly <= 7; ly++) {
+          for (let d = -10; d <= 10; d++) {
+            if ((d + ly) % 2 !== 0) continue
+            spots.push({ p: P(cx + d, ly), d: Math.hypot(d * 0.8, (ly - 3) * 1.6) })
+          }
+        }
+        room.slots = spots.sort((a, b) => a.d - b.d || a.p.x - b.p.x).map(s => s.p)
+      }
     }
     rooms.push(room)
   }
@@ -455,8 +542,7 @@ export function buildMap(projects: readonly string[]): GameMap {
       trail.add(at(x, y))
     }
     // The trail: down from the gate, then along the forest from edge to edge, winding a little.
-    const trailY = forestY + 3
-    const wind = (x: number) => trailY + Math.round(Math.sin(x * 0.23) * 0.9)
+    const trailY = trailRow
     for (let y = forestY; y <= wind(gate.x); y++) path(gate.x, y)
     for (let x = 0; x < cols; x++) {
       const y = wind(x)
@@ -466,7 +552,7 @@ export function buildMap(projects: readonly string[]): GameMap {
     }
 
     // A pond with reeds, below the trail.
-    const pond = { x: FIRST_ROOM_X + 7, y: trailY + 5 }
+    pond = { x: FIRST_ROOM_X + 7, y: trailY + 5 }
     const water = new Set<number>()
     for (let y = trailY + 2; y < bottom; y++) {
       for (let x = pond.x - 5; x <= pond.x + 5; x++) {
@@ -528,7 +614,7 @@ export function buildMap(projects: readonly string[]): GameMap {
     }
     return spots.filter(s => inside(s.at.x, s.at.y) && !blocked[at(s.at.x, s.at.y)])
   }
-  const spawn = { x: 0, y: forestY + 3 + Math.round(Math.sin(0) * 0.9) }
+  const spawn = { x: 0, y: wind(0) }
 
   // Seats in rings around the fire, inner ring first. Consecutive seats sit on
   // opposite sides, so a few heroes spread around the fire instead of bunching up.
@@ -566,6 +652,9 @@ export function buildMap(projects: readonly string[]): GameMap {
     fire,
     seats,
     gate,
+    doors,
+    pond,
+    trailAt: wind,
     spawn,
     corridorY,
     forestY,

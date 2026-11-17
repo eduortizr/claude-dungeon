@@ -89,9 +89,86 @@ const ALQUIMISTA: PixelArt = {
   ],
 }
 
-export const CUSTOM_SPRITES = { mercador: -1, alquimista: -2 } as const
+/**
+ * The Mestre do Claude, who runs the sala de jogos: a friendly wizard in
+ * Claude's coral robe and a purple hat with a star, a white beard, a staff
+ * topped by a glowing d20. His dragon pet is drawn apart (props.ts).
+ */
+const MESTRE: PixelArt = {
+  palette: {
+    k: OUTLINE,
+    p: '#6a4fd0',
+    P: '#43309a',
+    y: '#ffd34d',
+    s: '#f0c2a0',
+    e: '#2b2b3a',
+    m: '#b5473c',
+    b: '#f1ede4',
+    c: '#d97757',
+    C: '#a8553a',
+    h: '#6a4428',
+    q: '#c9b0ff',
+  },
+  rows: [
+    '................',
+    '.......kk.......',
+    '......kppk......',
+    '.....kpppPk.....',
+    '....kppypPPk....',
+    '.kkPPPPPPPPPPkk.',
+    '...kssssssssk.qq',
+    '...ksessssesk.hq',
+    '..kbbbbmmbbbbk.h',
+    '..kbbbbbbbbbbk.h',
+    '..kcCbbbbbbCck.h',
+    '.kccccccccccckh.',
+    '.kcccCyyyyCcckh.',
+    '.kcccccccccccck.',
+    '..kCCCCCCCCCCk..',
+    '...kkk....kkk...',
+  ],
+}
 
-const ART: Record<number, PixelArt> = { [-1]: MERCADOR, [-2]: ALQUIMISTA }
+/** The taverna's minstrel: a red cap with a feather, a teal tunic and a lute. */
+const MENESTREL: PixelArt = {
+  palette: {
+    k: OUTLINE,
+    R: '#b8323e',
+    D: '#7a1f2a',
+    f: '#f3eadb',
+    s: '#e8b796',
+    e: '#2b2b3a',
+    m: '#b5473c',
+    t: '#2f8a8a',
+    T: '#1d5656',
+    y: '#e0b04a',
+    l: '#a8672e',
+    L: '#6a3f1c',
+    b: '#4a3020',
+  },
+  rows: [
+    '................',
+    '......kkkk...ff.',
+    '.....kRRRRk.ff..',
+    '....kRRRRRRkf...',
+    '...kDDDDDDDDk...',
+    '...kssssssssk...',
+    '...ksessssesk...',
+    '....kssmmssk....',
+    '...kTttttttTk...',
+    '..kllLtttttTk...',
+    '.kllyLtttttTk...',
+    '.kllLsttttTk....',
+    '..kllLkkttTk....',
+    '...kkk.kttk.....',
+    '.....kbbkbbk....',
+    '.....kkk.kkk....',
+  ],
+}
+
+export const CUSTOM_SPRITES = { mercador: -1, alquimista: -2, mestre: -3, menestrel: -4 } as const
+
+const ART: Record<number, PixelArt> = { [-1]: MERCADOR, [-2]: ALQUIMISTA, [-3]: MESTRE, [-4]: MENESTREL }
 const rendered = new Map<number, HTMLCanvasElement>()
 
 /** The pixel map as a 16×16 canvas (white silhouette when `white`). Built once per sprite. */

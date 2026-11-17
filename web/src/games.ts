@@ -153,6 +153,22 @@ export const GUILD_BANTER: readonly { a: string; b: string; lines: readonly [str
   { a: 'guerreiro', b: 'arquimago', lines: ['Mestre, me ensina o feitiço do bug impossível?', 'Primeiro aprenda a ler a mensagem de erro.'] },
 ]
 
+/** The Mestre do Claude chats with idle heroes: his line, then the hero's answer. */
+export const MASTER_CHATS: readonly (readonly [string, string])[] = [
+  ['Como vai a missão?', 'Quase lá. Só falta o último teste.'],
+  ['Meu dragãozinho gostou de você.', 'Ele acabou de queimar minha capa...'],
+  ['Quer jogar a próxima campanha?', 'Só se tiver baú e nenhum mímico.'],
+  ['Descansando entre uma missão e outra?', 'Esperando o próximo prompt, mestre.'],
+  ['Já rolou os dados hoje?', 'Só no deploy. Deu 1.'],
+]
+
+/** What the Mestre says to open a session of Masmorras & Dragões for whoever is idle. */
+export const MASTER_OPENERS = [
+  'Sentem-se, aventureiros! A campanha começa agora.',
+  'Silêncio na mesa... o mestre vai narrar.',
+  'Pergaminhos abertos, dados na mão! Vamos jogar.',
+]
+
 export type ForestActivityName = 'pescar' | 'ervas' | 'descansar' | 'passear'
 
 export const FOREST_LINES: Record<ForestActivityName, readonly string[]> = {
@@ -163,7 +179,7 @@ export const FOREST_LINES: Record<ForestActivityName, readonly string[]> = {
 }
 
 /** What the residents mutter while they work, when there is nothing else to say. */
-export const RESIDENT_LINES: Record<'taverneiro' | 'alquimista' | 'mercador', readonly string[]> = {
+export const RESIDENT_LINES: Record<'taverneiro' | 'alquimista' | 'mercador' | 'mestre' | 'menestrel', readonly string[]> = {
   taverneiro: ['O de sempre?', 'Hoje tem hidromel fresco!', 'Quem quebrou a caneca vai pagar.', 'Mais uma missão? Mais uma rodada!'],
   alquimista: [
     'Hmm, o fígado deste aqui tem três lobos.',
@@ -171,6 +187,20 @@ export const RESIDENT_LINES: Record<'taverneiro' | 'alquimista' | 'mercador', re
     'O caldeirão está quase no ponto.',
     'Alguém tem um olho de goblin sobrando?',
     'Fascinante... ele tem dois corações.',
+  ],
+  mestre: [
+    'Quem quer uma aventura? Tenho uma masmorra fresquinha.',
+    'Role iniciativa, só por precaução.',
+    'O dragão não morde. Muito.',
+    'Já fiz o mapa da próxima campanha. Tem um bug no terceiro andar.',
+    'Eu mestro, vocês rolam. Esse é o trato.',
+  ],
+  menestrel: [
+    'Uma balada sobre o deploy de sexta...',
+    'Pedidos? Só aceito os que rimam.',
+    'Dó, ré, mi... merge conflict!',
+    'Essa é pra quem fechou o ticket hoje!',
+    'Cantei o dragão do módulo de pagamentos. Ele gostou.',
   ],
   mercador: [
     'Os números não dormem. Eu também não.',

@@ -24,6 +24,12 @@ export const GROUND_PROPS: ReadonlySet<PropKind> = new Set<PropKind>([
   'gameshelf',
   'dartboard',
   'ticker',
+  'torch',
+  'spikes',
+  'cobweb',
+  'bones',
+  'fern',
+  'stage',
 ])
 
 /** Props that are targets in the training room; they wobble or flash after a hit. */
@@ -615,6 +621,85 @@ export function drawProp(ctx: Ctx, prop: Prop, c: PropContext): void {
       rect(ctx, '#7a7588', px + 22, py + 6, 4, 0.6)
       break
     }
+    // ---- decoration --------------------------------------------------------
+    case 'torch': {
+      // An iron sconce on the wall and a flame that lights the room around it.
+      rect(ctx, '#2b2b36', px + 7, py + 7, 2, 7)
+      rect(ctx, '#4a4a58', px + 5, py + 6, 6, 2)
+      rect(ctx, '#6a4428', px + 6, py + 3, 4, 3)
+      flame(ctx, px + 8, py + 4, time + prop.x * 0.7, 1)
+      glow(ctx, px + 8, py + 4, 34, 'rgba(255, 160, 60, ALPHA)', 0.3 + Math.sin(time * 9 + prop.x) * 0.04)
+      break
+    }
+    case 'spikes': {
+      // A trap plate: the spikes slide out and back, out of step with each other.
+      rect(ctx, '#2f2830', px + 1, py + 9, 14, 6)
+      rect(ctx, '#463d48', px + 1, py + 9, 14, 1)
+      const out = Math.max(0, Math.sin(time * 1.3 + v * 1.7))
+      const h = 1 + Math.round(out * 4)
+      for (let k = 0; k < 4; k++) {
+        rect(ctx, '#aeb6c2', px + 2 + k * 3.5, py + 13 - h, 2, h + 1)
+        rect(ctx, '#f1f4f8', px + 2 + k * 3.5, py + 13 - h, 1, 1)
+      }
+      break
+    }
+    case 'cobweb': {
+      // Strands from a corner: bit 0 mirrors it to the right, bit 1 to the bottom.
+      ctx.save()
+      ctx.translate(px + (v & 1 ? T : 0), py + (v & 2 ? T : 0))
+      ctx.scale(v & 1 ? -1 : 1, v & 2 ? -1 : 1)
+      ctx.fillStyle = 'rgba(235, 235, 245, 0.6)'
+      ctx.fillRect(0, 0, 9, 1)
+      ctx.fillRect(0, 0, 1, 9)
+      for (let k = 0; k < 8; k++) ctx.fillRect(k, k, 1, 1)
+      for (const r of [3, 5, 7]) for (let j = 0; j <= r; j++) ctx.fillRect(r - j, j, 1, 1)
+      ctx.restore()
+      break
+    }
+    case 'bones': {
+      const o = v % 3
+      rect(ctx, '#d9d2c0', px + 3 + o, py + 10, 7, 2)
+      rect(ctx, '#d9d2c0', px + 2 + o, py + 9, 2, 1)
+      rect(ctx, '#d9d2c0', px + 9 + o, py + 12, 2, 1)
+      rect(ctx, '#a89f8a', px + 4 + o, py + 11, 5, 1)
+      if (o === 0) {
+        rect(ctx, '#ece6d4', px + 9, py + 6, 5, 4)
+        rect(ctx, '#2b2328', px + 10, py + 7, 1, 1)
+        rect(ctx, '#2b2328', px + 12, py + 7, 1, 1)
+        rect(ctx, '#a89f8a', px + 10, py + 9, 3, 1)
+      }
+      break
+    }
+    case 'fern':
+      for (const [dx, lean, h] of [[7, 0, 8], [5, -2, 6], [10, 2, 6], [3, -3, 4], [12, 3, 4]] as const) {
+        for (let k = 0; k < h; k++) rect(ctx, k % 2 ? '#3f8a46' : '#56a85a', px + dx + Math.round((lean * k) / h), py + 14 - k, 2, 1)
+      }
+      break
+    case 'plant':
+      shadow(ctx, px + 8, py + 15, 5)
+      rect(ctx, '#a8553a', px + 4, py + 11, 8, 5)
+      rect(ctx, '#c46a4a', px + 4, py + 11, 8, 1)
+      rect(ctx, '#3f8a46', px + 7, py + 3, 2, 8)
+      rect(ctx, '#56a85a', px + 3, py + 5, 4, 2)
+      rect(ctx, '#56a85a', px + 9, py + 7, 4, 2)
+      rect(ctx, '#3f8a46', px + 5, py + 2, 3, 3)
+      rect(ctx, '#3f8a46', px + 9, py + 3, 3, 3)
+      if (v === 1) {
+        rect(ctx, '#ff8ad8', px + 6, py + 1, 3, 2)
+        rect(ctx, '#ffd34d', px + 7, py + 1, 1, 1)
+      }
+      break
+    case 'stage': {
+      // The minstrel's stage: two tiles of planks, a front edge and a warm spotlight.
+      rect(ctx, '#3d2414', px - 1, py + 4, 34, 28)
+      rect(ctx, '#9a6a3c', px, py + 3, 32, 22)
+      for (let k = 0; k < 5; k++) rect(ctx, '#7d5230', px, py + 7 + k * 4, 32, 1)
+      rect(ctx, '#b9824a', px, py + 3, 32, 1)
+      rect(ctx, '#5a3a22', px, py + 25, 32, 5)
+      rect(ctx, '#3d2414', px, py + 29, 32, 1)
+      glow(ctx, px + 16, py + 12, 30, 'rgba(255, 210, 120, ALPHA)', 0.18 + Math.sin(time * 2) * 0.03)
+      break
+    }
     case 'ticker': {
       // A board on the wall with a candlestick chart that keeps scrolling.
       rect(ctx, '#3d2414', px - 16, py + 1, 48, 14)
@@ -634,4 +719,25 @@ export function drawProp(ctx: Ctx, prop: Prop, c: PropContext): void {
       break
     }
   }
+}
+
+/** The Mestre's pet dragon: a few pixels of green with flapping wings. Faces right unless flipped. */
+export function drawDragon(ctx: Ctx, x: number, y: number, time: number, flip: boolean): void {
+  ctx.save()
+  ctx.translate(Math.round(x), Math.round(y))
+  if (flip) ctx.scale(-1, 1)
+  const flap = Math.sin(time * 18) > 0 ? -4 : -1
+  rect(ctx, '#c9553e', -4, flap - 1, 3, 3) // far wing
+  rect(ctx, '#e8785a', -2, flap, 4, 2) // near wing
+  rect(ctx, '#2f7a4a', -4, 0, 9, 4) // body
+  rect(ctx, '#4caf6a', -3, 0, 7, 3)
+  rect(ctx, '#bde08a', -3, 3, 6, 1) // belly
+  rect(ctx, '#4caf6a', 4, -2, 5, 4) // head
+  rect(ctx, '#f2c544', 7, -3, 1, 1) // horn
+  rect(ctx, '#1a1220', 7, -1, 1, 1) // eye
+  rect(ctx, '#ff9a2e', 9, 0, 1, 1) // a puff of fire
+  const wave = Math.round(Math.sin(time * 9))
+  rect(ctx, '#2f7a4a', -8, 1 + wave, 4, 2) // tail
+  rect(ctx, '#4caf6a', -10, 1 + wave * 2, 2, 1)
+  ctx.restore()
 }

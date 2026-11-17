@@ -35,3 +35,12 @@ Mapa pixel art (tema RPG) das sessões do Claude Code e uma guilda de subagentes
 - No Windows, parar o `npm run dev` pelo harness pode deixar o `tsx` e o `vite` órfãos nas portas: conferir com `Get-NetTCPConnection -LocalPort 4747` e parar só esses PIDs.
 - Prints: puppeteer-core + Edge headless (script descartável no scratchpad); `--virtual-time-budget` do Edge trava com SSE aberto. Do app: abrir com `--remote-debugging-port=9333` e `puppeteer.connect`.
 - Mudou o plugin? Ele é lido da pasta do marketplace: rodar `/reload-plugins` ou abrir uma sessão nova.
+
+## Mais vida no mapa (2026-11-17, pedido do aluno)
+
+- **Arena:** sala de projeto = `ARENA_W` (23 tiles, duas salas e a parede). `buildMap` assenta as salas com um cursor por lado (cima/baixo) e `RoomLayout.w` guarda a largura; ~44 vagas em linhas alternadas, as mais perto do monstro primeiro (`map.test.ts` testa vagas únicas e alcance a partir da porta). Seladas e salas da guilda continuam com 11.
+- **Combate:** o monstro revida (`retaliate` em `scene.ts`: avança, número vermelho, empurrão `Actor.shove`, flash branco `Actor.hurt`, pixels vermelhos `burst`); a cada 3 mortes numa luta vem um chefe 2x (`isBossWave`, 22 de HP, aura vermelha); tremida leve só se a sala estiver visível; tochas, espinhos que sobem e descem, teias e ossos nas arenas.
+- **Rotina da guilda:** `web/src/routine.ts` (pura, testada): 1 min por etapa, ciclo treino, taverna, jogos, treino, floresta, treino; cada classe com fase diferente. Os membros ficam em `RoomLayout.guests` (taverna, jogos) ou nas últimas vagas da floresta; quando convocados saem de onde estão e voltam para onde o treinando está.
+- **Portas:** `map.doors` (portas das salas + portão da caverna); `drawDoors` abre quando alguém chega a < 1,9 tile e fecha 0,7 s depois.
+- **Residentes novos:** Mestre do Claude (sprite -3, sala de jogos, dragãozinho `drawDragon`, conversa com ociosos e mestra D&D com `rpgScene`/`rpgLines`) e Menestrel (sprite -4, palquinho da taverna, notas flutuando; heróis na taverna balançam).
+- **Floresta:** `web/src/wildlife.ts` (funções puras do tempo): cervo, coelho e raposa cruzam a trilha, patos e peixes no lago. Decoração nova (`torch`, `spikes`, `cobweb`, `bones`, `plant`, `fern`, `stage`) em `props.ts`.
