@@ -1,0 +1,11 @@
+{
+  "name": "claude-dungeon",
+  "owner": { "name": "Claude Dungeon" },
+  "plugins": [
+    {
+      "name": "guild",
+      "source": "./plugin",
+      "description": "Five RPG-class subagents on different models, a keyword router for Agent calls, and hooks that stream sessions to the Claude Dungeon map."
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "name": "guild",
+  "version": "0.1.0",
+  "description": "Claude Dungeon guild: five RPG-class subagents on different models, a keyword router for Agent calls, and hooks that stream the session to the local pixel-art map.",
+  "license": "MIT",
+  "keywords": ["agents", "subagents", "routing", "visualization", "rpg"]
+}
