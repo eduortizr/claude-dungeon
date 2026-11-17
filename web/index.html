@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Claude Dungeon</title>
+    <link rel="icon" href="/favicon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>⚔ Claude Dungeon</h1>
+      <div id="summary" class="summary"></div>
+      <span id="connection" class="connecting">conectando…</span>
+    </header>
+    <main>
+      <canvas id="map" aria-label="Mapa da dungeon com as sessões do Claude"></canvas>
+      <details id="legend" class="legend" open></details>
+      <aside id="panel" class="panel" hidden></aside>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
