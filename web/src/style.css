@@ -113,7 +113,7 @@ main {
   position: absolute;
   left: 14px;
   bottom: 14px;
-  width: 270px;
+  width: 200px;
   padding: 10px 12px;
   background: rgba(29, 22, 34, 0.92);
   border: 2px solid var(--line);

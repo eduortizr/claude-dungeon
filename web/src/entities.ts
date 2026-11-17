@@ -3,6 +3,7 @@
  * guarding each busy room, and short-lived effects (slashes, damage numbers).
  * Positions are in tiles, as floats while walking.
  */
+import type { ClassId } from '../../shared/guild'
 import type { GameMap } from './map'
 import { findPath, type Point } from './pathfinding'
 
@@ -28,6 +29,15 @@ export class Actor {
   isGone = false
   /** Hits (tool calls) already animated, to animate only new ones. */
   hitsSeen: number
+  /** Not drawn (a training-room member whose class is out on a mission). */
+  isHidden = false
+  isSleeping = false
+  /** Which way to face once standing still (at a game table). */
+  restFacingLeft?: boolean
+  /** Where the scene sent it last ('taverna', 'jogos', ...), to notice arrivals. */
+  place?: string
+  /** Guild class of a party member or a training-room member. */
+  cls?: ClassId
   private path: Point[] = []
   private target?: Point
 
@@ -77,6 +87,7 @@ export class Actor {
     if (!next) {
       this.walkTime = 0
       if (this.isLeaving) this.isGone = true
+      if (this.restFacingLeft !== undefined && this.lunge === 0) this.facingLeft = this.restFacingLeft
       return
     }
     this.walkTime += dt
@@ -141,7 +152,7 @@ export class Monster {
 }
 
 export interface Effect {
-  kind: 'slash' | 'damage' | 'poof' | 'xp'
+  kind: 'slash' | 'damage' | 'poof' | 'xp' | 'z'
   x: number
   y: number
   age: number

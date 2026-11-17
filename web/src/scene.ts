@@ -1,35 +1,37 @@
 /**
  * The living map. `sync(world)` turns server state into goals (who walks
- * where, who attacks), `update(dt)` moves things, `render()` draws a frame.
+ * where, who attacks), `update(dt)` moves things and runs the idle
+ * activities, `render()` draws a frame.
  *
- * Where each hero goes:
- *   working / waiting  -> a slot in its project's room, facing the monster
- *   idle               -> a seat by the campfire in the cave
- *   offline            -> back out through the gate, then gone
- * Party members (subagents) follow their hero into the room and fight next to
- * it; when their mission is done they walk out through the gate.
+ * Where each hero goes is decided by `placeHeroes` (placement.ts): its
+ * project's room while it works, then the taverna, the sala de jogos and
+ * finally the caverna as it stays idle longer. Party members (subagents) live
+ * in the sala de treinamento: when summoned, the class's member walks from its
+ * training dummy to the hero's room, fights there, and walks back when done.
  */
-import { GUILD, hashString } from '../../shared/guild'
+import { GUILD, GUILD_MEMBERS, hashString, type ClassId } from '../../shared/guild'
 import type { Hero, WorldState } from '../../shared/types'
 import type { Camera } from './camera'
 import { Actor, type Effect, Monster, updateEffects } from './entities'
+import { GAME_NAMES, TABLE_GAMES, TAVERN_TALK, cardFace, playRound, taunt, type Round } from './games'
 import { buildMap, ROOM_H, ROOM_W, type GameMap, type RoomLayout } from './map'
 import type { Point } from './pathfinding'
+import { placeHeroes, victoryLine, type Place } from './placement'
 import { MONSTERS, TILE_SIZE, drawTile } from './tiles'
 
 const T = TILE_SIZE
 const VOID = '#120d16'
 const BUBBLE_TIME = 5
-const CAMP_TALK = [
-  'Alguém tem uma poção?',
-  'Essa fogueira tá boa…',
-  'Dizem que tem um dragão no módulo de pagamentos.',
-  'Quem deixou o TODO na sala 3?',
-  'Volto pra dungeon já já.',
-  'Meu escudo ainda tem marca de NullPointer.',
-  'Ouvi um merge conflict lá embaixo.',
-  'Descansar também é estratégia.',
-]
+/** Seconds between rounds at a game table, and how long a result stays on the table. */
+const ROUND_EVERY = 4.5
+const RESULT_TIME = 2.2
+
+interface TableState {
+  players: [string, string]
+  score: [number, number]
+  nextRound: number
+  last?: Round & { at: number }
+}
 
 export class Scene {
   map: GameMap = buildMap([])
@@ -40,9 +42,15 @@ export class Scene {
   private monsters = new Map<string, Monster>()
   private effects: Effect[] = []
   private time = 0
-  private nextChatter = 4
+  private nextChatter = 5
+  private nextSnore = 0
   /** Members whose mission ended before we ever drew them: never shown. */
   private finished = new Set<string>()
+  private places = new Map<string, Place>()
+  private tables = new Map<number, TableState>()
+  /** When each training dummy was last hit, by map tile index, for the wobble. */
+  private dummyHits = new Map<number, number>()
+  private nextDrill = new Map<string, number>()
 
   constructor(
     private readonly sheet: HTMLImageElement,
@@ -55,63 +63,110 @@ export class Scene {
 
   // ---- state -> goals ------------------------------------------------------
 
-  sync(world: WorldState): boolean {
+  /** Applies the server state. Also called every second: idle places change with time alone. */
+  sync(world: WorldState, now = Date.now()): boolean {
     this.world = world
     const heroes = Object.values(world.heroes).sort((a, b) => a.startedAt - b.startedAt || a.id.localeCompare(b.id))
     const mapChanged = this.syncRooms(heroes)
+    if (mapChanged) this.placeTrainees()
 
-    const idle: Actor[] = []
+    const jogos = this.map.room('jogos')
+    this.places = placeHeroes(heroes, now, jogos.tables.length)
     const inRoom = new Map<string, Actor[]>()
     const enter = (room: string, actor: Actor) => inRoom.set(room, [...(inRoom.get(room) ?? []), actor])
+    const members: (() => void)[] = []
 
     for (const hero of heroes) {
       const actor = this.heroActor(hero)
       if (!actor) continue
-      if (hero.status === 'offline') this.leave(actor)
-      else if (hero.status === 'idle') idle.push(actor)
-      else enter(hero.room, actor)
-
+      const place = this.places.get(hero.id) ?? { kind: 'gone' }
+      this.goToPlace(actor, hero, place, mapChanged, enter)
       this.syncBubble(actor, hero)
       if (hero.hits > actor.hitsSeen) {
         actor.hitsSeen = hero.hits
         this.strike(actor, hero.room)
       }
-
-      for (const member of hero.party) {
-        const key = `${hero.id}/${member.id}`
-        let memberActor = this.actors.get(key)
-        if (member.status !== 'working') {
-          if (memberActor) this.leave(memberActor)
-          else this.finished.add(key)
-          continue
-        }
-        if (this.finished.has(key) || hero.status === 'offline') continue
-        if (!memberActor) {
-          const cls = GUILD[member.cls]
-          memberActor = new Actor(key, hero.id, cls.sprite, cls.name, cls.color, true, actor.tile, member.toolCalls)
-          this.actors.set(key, memberActor)
-        }
-        memberActor.label = GUILD[member.cls].name
-        enter(hero.room, memberActor)
-        if (member.toolCalls > memberActor.hitsSeen) {
-          memberActor.hitsSeen = member.toolCalls
-          this.strike(memberActor, hero.room)
-        }
-        if (member.action !== memberActor.bubble?.text && member.toolCalls > 0) {
-          memberActor.bubble = { text: member.action, until: this.time + BUBBLE_TIME }
-        }
-      }
+      // Members go after every hero, so heroes keep the front slots of a room.
+      members.push(() => this.syncParty(hero, actor, enter))
     }
+    for (const syncMembers of members) syncMembers()
 
-    // Seats and slots are handed out in a stable order, so nobody swaps places.
-    idle.forEach((actor, i) => actor.goTo(this.map, this.map.seats[i % this.map.seats.length]!, mapChanged))
+    // Fighters' slots are handed out in a stable order, so nobody swaps places.
     for (const [roomName, actors] of inRoom) {
-      const room = this.room(roomName)
+      const room = this.projectRoom(roomName)
       if (!room) continue
       actors.forEach((actor, i) => actor.goTo(this.map, room.slots[i % room.slots.length]!, mapChanged))
     }
     this.syncMonsters(inRoom)
+    this.syncTables()
     return mapChanged
+  }
+
+  private goToPlace(actor: Actor, hero: Hero, place: Place, force: boolean, enter: (room: string, actor: Actor) => void): void {
+    const arrived = actor.place !== place.kind
+    actor.place = place.kind
+    actor.isSleeping = place.kind === 'caverna'
+    actor.restFacingLeft = undefined
+
+    switch (place.kind) {
+      case 'gone':
+        this.leave(actor, this.map.spawn)
+        break
+      case 'project':
+        enter(hero.room, actor)
+        break
+      case 'taverna': {
+        const slots = this.map.room('taverna').slots
+        actor.goTo(this.map, slots[place.index % slots.length]!, force)
+        const line = victoryLine(hero)
+        if (arrived && line) actor.bubble = { text: line, until: this.time + 7 }
+        break
+      }
+      case 'jogos': {
+        const table = this.map.room('jogos').tables[place.table]!
+        actor.goTo(this.map, table.seats[place.side], force)
+        actor.restFacingLeft = place.side === 1
+        if (arrived && place.side === 0) {
+          const rival = this.world.heroes[place.rival]?.name ?? 'você'
+          actor.bubble = { text: `Bora uma partida de ${GAME_NAMES[TABLE_GAMES[place.table] ?? 'dados'].toLowerCase()}, ${rival}?`, until: this.time + 4 }
+        }
+        break
+      }
+      case 'caverna':
+        actor.goTo(this.map, this.map.seats[place.index % this.map.seats.length]!, force)
+        if (arrived) actor.bubble = undefined
+        break
+    }
+  }
+
+  private syncParty(hero: Hero, heroActor: Actor, enter: (room: string, actor: Actor) => void): void {
+    for (const member of hero.party) {
+      const key = `${hero.id}/${member.id}`
+      let actor = this.actors.get(key)
+      const home = this.station(member.cls)?.stand ?? this.map.spawn
+      if (member.status !== 'working') {
+        if (actor) this.leave(actor, home, 'Missão cumprida!')
+        else this.finished.add(key)
+        continue
+      }
+      if (this.finished.has(key) || hero.status === 'offline') continue
+      if (!actor) {
+        const cls = GUILD[member.cls]
+        // Guild classes come out of the training room; anyone else through the gate.
+        const start = this.station(member.cls) ? home : heroActor.tile
+        actor = new Actor(key, hero.id, cls.sprite, cls.name, cls.color, true, start, member.toolCalls)
+        actor.cls = member.cls
+        this.actors.set(key, actor)
+      }
+      enter(hero.room, actor)
+      if (member.toolCalls > actor.hitsSeen) {
+        actor.hitsSeen = member.toolCalls
+        this.strike(actor, hero.room)
+      }
+      if (member.action !== actor.bubble?.text && member.toolCalls > 0) {
+        actor.bubble = { text: member.action, until: this.time + BUBBLE_TIME }
+      }
+    }
   }
 
   private syncRooms(heroes: Hero[]): boolean {
@@ -124,6 +179,24 @@ export class Scene {
     return true
   }
 
+  /** The training room's members: always there, unless their class is out on a mission. */
+  private placeTrainees(): void {
+    for (const station of this.map.room('treino').stations) {
+      const key = `treino/${station.cls}`
+      const cls = GUILD[station.cls]
+      const actor = this.actors.get(key) ?? new Actor(key, '', cls.sprite, cls.name, cls.color, true, station.stand, 0)
+      actor.cls = station.cls
+      actor.x = station.stand.x
+      actor.y = station.stand.y
+      actor.goTo(this.map, station.stand, true)
+      this.actors.set(key, actor)
+    }
+  }
+
+  private station(cls: ClassId) {
+    return this.map.room('treino').stations.find(s => s.cls === cls)
+  }
+
   private heroActor(hero: Hero): Actor | undefined {
     let actor = this.actors.get(hero.id)
     if (!actor) {
@@ -134,12 +207,12 @@ export class Scene {
     return actor
   }
 
-  private leave(actor: Actor): void {
+  private leave(actor: Actor, to: Point, farewell?: string): void {
     if (actor.isLeaving) return
     actor.isLeaving = true
-    actor.bubble = actor.isMember ? { text: 'Missão cumprida!', until: this.time + 3 } : undefined
-    actor.goTo(this.map, this.map.spawn, true)
-    if (actor.tile.x === this.map.spawn.x && actor.tile.y === this.map.spawn.y) actor.isGone = true
+    actor.bubble = farewell ? { text: farewell, until: this.time + 3 } : undefined
+    actor.goTo(this.map, to, true)
+    if (actor.tile.x === to.x && actor.tile.y === to.y) actor.isGone = true
   }
 
   private syncBubble(actor: Actor, hero: Hero): void {
@@ -157,10 +230,24 @@ export class Scene {
       if (!inRoom.has(roomName)) this.monsters.delete(roomName)
     }
     for (const roomName of inRoom.keys()) {
-      const room = this.room(roomName)
+      const room = this.projectRoom(roomName)
       if (room && !this.monsters.has(roomName)) {
         this.monsters.set(roomName, new Monster(roomName, this.monsterLook(roomName, 0), room.monster))
       }
+    }
+  }
+
+  /** Keeps one score per pair at each table; a new pair starts from 0 x 0. */
+  private syncTables(): void {
+    const seated = new Map<number, [string, string]>()
+    for (const [heroId, place] of this.places) {
+      if (place.kind === 'jogos' && place.side === 0) seated.set(place.table, [heroId, place.rival])
+    }
+    for (const table of [...this.tables.keys()]) if (!seated.has(table)) this.tables.delete(table)
+    for (const [table, players] of seated) {
+      const current = this.tables.get(table)
+      if (current && current.players[0] === players[0] && current.players[1] === players[1]) continue
+      this.tables.set(table, { players, score: [0, 0], nextRound: this.time + ROUND_EVERY })
     }
   }
 
@@ -168,8 +255,8 @@ export class Scene {
     return MONSTERS[hashString(`${room}#${generation}`) % MONSTERS.length]!
   }
 
-  private room(name: string): RoomLayout | undefined {
-    return this.map.rooms.find(r => r.name === name)
+  private projectRoom(name: string): RoomLayout | undefined {
+    return this.map.rooms.find(r => r.kind === 'project' && r.name === name)
   }
 
   /** One tool call = one blow at the room's monster, if the actor is there. */
@@ -211,29 +298,104 @@ export class Scene {
     }
     this.effects = updateEffects(this.effects, dt)
 
-    // Small talk around the fire.
-    if (this.time > this.nextChatter) {
-      this.nextChatter = this.time + 6 + Math.random() * 6
-      const resting = [...this.actors.values()].filter(
-        a => !a.isMember && !a.isMoving && this.world.heroes[a.heroId]?.status === 'idle',
-      )
-      const speaker = resting[Math.floor(Math.random() * resting.length)]
-      if (speaker) {
-        speaker.bubble = { text: CAMP_TALK[Math.floor(Math.random() * CAMP_TALK.length)]!, until: this.time + 4 }
+    this.drill()
+    this.playTables()
+    this.tavernTalk()
+    this.snore()
+  }
+
+  /** Training room: members whose class is home hit their dummies now and then. */
+  private drill(): void {
+    const away = new Set<ClassId>()
+    for (const actor of this.actors.values()) if (actor.heroId && actor.cls) away.add(actor.cls)
+
+    for (const station of this.map.room('treino').stations) {
+      const actor = this.actors.get(`treino/${station.cls}`)
+      if (!actor) continue
+      actor.isHidden = away.has(station.cls)
+      if (actor.isHidden || actor.isMoving) continue
+      const key = actor.id
+      const next = this.nextDrill.get(key) ?? this.time + Math.random() * 2
+      if (this.time < next) {
+        this.nextDrill.set(key, next)
+        continue
       }
+      this.nextDrill.set(key, this.time + 1.2 + Math.random() * 1.8)
+      actor.attack(station.dummy)
+      this.dummyHits.set(station.dummy.y * this.map.cols + station.dummy.x, this.time)
     }
   }
 
-  /** The hero under a world-pixel point (a member selects its hero). */
+  /** Sala de jogos: each occupied table plays a round every few seconds. */
+  private playTables(): void {
+    const jogos = this.map.room('jogos')
+    for (const [index, table] of this.tables) {
+      const players = table.players.map(id => this.actors.get(id))
+      const [a, b] = players
+      if (!a || !b || a.isMoving || b.isMoving || this.time < table.nextRound) continue
+      table.nextRound = this.time + ROUND_EVERY + Math.random() * 2
+      const round = playRound(TABLE_GAMES[index] ?? 'dados')
+      table.last = { ...round, at: this.time }
+      table.score[round.winner]++
+
+      const winner = players[round.winner]!
+      const loser = players[1 - round.winner]!
+      const center = jogos.tables[index]!.center
+      if (round.game === 'braco') {
+        winner.attack(center)
+        loser.attack(center)
+      }
+      const vars = {
+        winner: winner.label,
+        loser: loser.label,
+        hits: this.world.heroes[winner.heroId]?.hits ?? 0,
+      }
+      winner.bubble = { text: taunt('win', vars), until: this.time + 3 }
+      loser.bubble = { text: taunt('lose', vars), until: this.time + 3 }
+    }
+  }
+
+  private tavernTalk(): void {
+    if (this.time < this.nextChatter) return
+    this.nextChatter = this.time + 7 + Math.random() * 6
+    const drinkers = [...this.actors.values()].filter(a => a.place === 'taverna' && !a.isMoving && !a.bubble)
+    const speaker = drinkers[Math.floor(Math.random() * drinkers.length)]
+    if (speaker) speaker.bubble = { text: TAVERN_TALK[Math.floor(Math.random() * TAVERN_TALK.length)]!, until: this.time + 4 }
+  }
+
+  /** Caverna: a "z" floats up from each sleeper. */
+  private snore(): void {
+    if (this.time < this.nextSnore) return
+    this.nextSnore = this.time + 0.9
+    for (const actor of this.actors.values()) {
+      if (!actor.isSleeping || actor.isMoving) continue
+      this.effects.push({ kind: 'z', x: actor.x + 0.7, y: actor.y - 0.1, age: 0, ttl: 2, text: Math.random() < 0.5 ? 'z' : 'Z' })
+    }
+  }
+
+  /** The hero under a world-pixel point (a member selects its hero; training NPCs select nobody). */
   pick(world: Point): string | undefined {
     let best: { id: string; distance: number } | undefined
     for (const actor of this.actors.values()) {
+      if (!actor.heroId || actor.isHidden) continue
       const cx = (actor.x + 0.5) * T
       const cy = (actor.y + 0.5) * T
       const distance = Math.hypot(world.x - cx, world.y - cy)
       if (distance < T * 0.75 && (!best || distance < best.distance)) best = { id: actor.heroId, distance }
     }
     return best?.id
+  }
+
+  /** How many heroes each room holds right now, for the signs. */
+  private occupancy(): Map<string, number> {
+    const counts = new Map<string, number>()
+    const add = (name: string) => counts.set(name, (counts.get(name) ?? 0) + 1)
+    for (const [heroId, place] of this.places) {
+      if (place.kind === 'project') add(this.world.heroes[heroId]?.room ?? '')
+      else if (place.kind === 'taverna') add('Taverna')
+      else if (place.kind === 'jogos') add('Sala de jogos')
+    }
+    return counts
   }
 
   // ---- drawing -------------------------------------------------------------
@@ -248,6 +410,7 @@ export class Scene {
     ctx.setTransform(z, 0, 0, z, Math.round(-camera.x * z), Math.round(-camera.y * z))
     this.drawTiles(ctx)
     this.drawFireLight(ctx)
+    this.drawDummies(ctx)
     this.drawSprites(ctx)
     this.drawEffects(ctx)
 
@@ -308,6 +471,27 @@ export class Scene {
     }
   }
 
+  /** Training dummies: a post with a straw body, wobbling for a moment after each hit. */
+  private drawDummies(ctx: CanvasRenderingContext2D): void {
+    for (const dummy of this.map.dummies) {
+      const hitAt = this.dummyHits.get(dummy.y * this.map.cols + dummy.x) ?? -10
+      const since = this.time - hitAt
+      const wobble = since < 0.4 ? Math.round(Math.sin(since * 40) * 2 * (1 - since / 0.4)) : 0
+      const px = dummy.x * T
+      const py = dummy.y * T
+      this.shadow(ctx, px, py)
+      ctx.fillStyle = '#5a3a22'
+      ctx.fillRect(px + 7, py + 8, 2, 7) // post
+      ctx.fillStyle = '#c9a36b'
+      ctx.fillRect(px + 4 + wobble, py + 5, 8, 6) // straw body
+      ctx.fillRect(px + 2 + wobble, py + 6, 12, 2) // arms
+      ctx.fillStyle = '#e0c48a'
+      ctx.fillRect(px + 5 + wobble, py + 1, 6, 4) // head
+      ctx.fillStyle = '#8a2a2a'
+      ctx.fillRect(px + 7 + wobble, py + 7, 2, 2) // target
+    }
+  }
+
   private drawSprites(ctx: CanvasRenderingContext2D): void {
     type Drawable = { y: number; draw: () => void }
     const list: Drawable[] = []
@@ -332,6 +516,7 @@ export class Scene {
     }
 
     for (const actor of this.actors.values()) {
+      if (actor.isHidden) continue
       list.push({
         y: actor.y,
         draw: () => {
@@ -389,16 +574,15 @@ export class Scene {
     ctx.textAlign = 'center'
 
     // Room signs, like the office plates in the reference video.
-    const count = new Map<string, number>()
-    for (const hero of Object.values(this.world.heroes)) {
-      if (hero.status !== 'offline') count.set(hero.room, (count.get(hero.room) ?? 0) + 1)
-    }
+    const count = this.occupancy()
     for (const room of this.map.rooms) {
       // Top rooms wear their sign on the top wall, bottom rooms on the bottom one: never over the corridor.
       const sign = camera.toScreen((room.x + ROOM_W / 2) * T, (room.isTop ? room.y : room.y + ROOM_H) * T)
       const title = room.name || 'Câmara selada'
-      this.pill(ctx, sign.x, sign.y - 4, title, room.name ? '#f5e6c8' : '#8a7d6a', room.name ? count.get(room.name) : undefined, z)
+      const color = room.kind === 'sealed' ? '#8a7d6a' : room.kind === 'project' ? '#f5e6c8' : '#ffd9a0'
+      this.pill(ctx, sign.x, sign.y - 4, title, color, count.get(room.name) || undefined, z)
     }
+    this.drawTableResults(ctx, camera)
     const cave = camera.toScreen((this.map.fire.x + 0.5) * T, 1.2 * T)
     this.pill(ctx, cave.x, cave.y, 'Caverna', '#ffb366', undefined, z)
     const gate = camera.toScreen((this.map.gate.x + 0.5) * T, (this.map.gate.y + 2.4) * T)
@@ -407,7 +591,7 @@ export class Scene {
     // Name tags and speech bubbles.
     const font = Math.max(14, Math.min(19, z * 5))
     for (const actor of [...this.actors.values()].sort((a, b) => a.y - b.y)) {
-      const head = camera.toScreen((actor.x + 0.5) * T, actor.y * T)
+      if (actor.isHidden) continue
       const feet = camera.toScreen((actor.x + 0.5) * T, (actor.y + 1) * T)
       ctx.font = `${actor.isMember ? 600 : 700} ${actor.isMember ? font - 1 : font}px "VT323", monospace`
       const width = ctx.measureText(actor.label).width + 16
@@ -425,7 +609,7 @@ export class Scene {
     const placed: { left: number; right: number; top: number; bottom: number }[] = []
     for (const actor of [...this.actors.values()].sort((a, b) => b.y - a.y)) {
       const bubble = actor.bubble
-      if (!bubble || bubble.until <= this.time) continue
+      if (!bubble || bubble.until <= this.time || actor.isHidden) continue
       const head = camera.toScreen((actor.x + 0.5) * T, actor.y * T)
       ctx.font = `500 ${font}px "VT323", monospace`
       const text = this.fit(ctx, bubble.text)
@@ -444,6 +628,16 @@ export class Scene {
     }
 
     for (const effect of this.effects) {
+      if (effect.kind === 'z') {
+        const t = effect.age / effect.ttl
+        const p = camera.toScreen((effect.x + Math.sin(t * 6) * 0.2) * T, (effect.y - t * 1.2) * T)
+        ctx.globalAlpha = 1 - t
+        ctx.font = `700 ${font + Math.round(t * 6)}px "VT323", monospace`
+        ctx.fillStyle = '#cfe3ff'
+        ctx.fillText(effect.text ?? 'z', p.x, p.y)
+        ctx.globalAlpha = 1
+        continue
+      }
       if (effect.kind !== 'damage' && effect.kind !== 'xp') continue
       const t = effect.age / effect.ttl
       const p = camera.toScreen(effect.x * T, effect.y * T)
@@ -454,6 +648,40 @@ export class Scene {
       ctx.fillStyle = effect.kind === 'xp' ? '#7dff9b' : effect.color ?? '#ffd34d'
       ctx.fillText(effect.text ?? '', p.x, p.y - t * 24 * (z / 3))
       ctx.globalAlpha = 1
+    }
+  }
+
+  /** Over each game table: the last round's dice or cards for a moment, then the score. */
+  private drawTableResults(ctx: CanvasRenderingContext2D, camera: Camera): void {
+    const z = camera.zoom
+    const font = Math.max(14, Math.min(19, z * 5))
+    const tables = this.map.room('jogos').tables
+    for (const [index, table] of this.tables) {
+      const spot = tables[index]
+      if (!spot) continue
+      const p = camera.toScreen((spot.center.x + 0.5) * T, spot.center.y * T)
+      const fresh = table.last && this.time - table.last.at < RESULT_TIME ? table.last : undefined
+      if (fresh && fresh.game !== 'braco') {
+        const faces = fresh.values.map(v => (fresh.game === 'cartas' ? cardFace(v) : String(v)))
+        const size = font + 8
+        faces.forEach((face, side) => {
+          const x = p.x + (side === 0 ? -size * 0.7 : size * 0.7)
+          const isWinner = side === fresh.winner
+          ctx.fillStyle = fresh.game === 'cartas' ? '#fdf7ea' : '#ffffff'
+          ctx.strokeStyle = isWinner ? '#ffd34d' : '#2b1d2e'
+          ctx.lineWidth = 2
+          const w = fresh.game === 'cartas' ? size * 0.75 : size
+          ctx.beginPath()
+          ctx.roundRect(x - w / 2, p.y - size - 4, w, size, 4)
+          ctx.fill()
+          ctx.stroke()
+          ctx.fillStyle = fresh.game === 'cartas' && side === 1 ? '#c0392b' : '#2b1d2e'
+          ctx.font = `700 ${font}px "VT323", monospace`
+          ctx.fillText(face, x, p.y - size / 2 - 3)
+        })
+      } else {
+        this.pill(ctx, p.x, p.y - 10, `${table.score[0]} × ${table.score[1]}`, '#ffd9a0', undefined, Math.max(2, z - 1))
+      }
     }
   }
 

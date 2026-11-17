@@ -18,9 +18,13 @@ export const TILE = {
   tomb: 64,
   table: 72,
   anvil: 74,
+  crateAlt: 75,
+  barkeep: 85,
   barrel: 82,
   chest: 89,
   chestBig: 90,
+  /** Dagger, sword, axe, hammer: the training room's weapon rack. */
+  weapons: [105, 106, 107, 117],
 } as const
 
 /** Monsters that guard a project's room, picked by the project's name. */

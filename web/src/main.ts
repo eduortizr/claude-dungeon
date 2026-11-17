@@ -1,5 +1,5 @@
 import './style.css'
-import { GUILD, type ClassId } from '../../shared/guild'
+import { GUILD, GUILD_MEMBERS, type ClassId } from '../../shared/guild'
 import type { WorldState } from '../../shared/types'
 import { Camera } from './camera'
 import { modelName } from './format'
@@ -56,7 +56,7 @@ function renderSummary(): void {
 }
 
 function renderLegend(): void {
-  const classes: ClassId[] = ['mago', 'guerreiro', 'ladino', 'clerigo', 'bardo']
+  const classes: ClassId[] = [...GUILD_MEMBERS]
   document.querySelector('#legend')!.innerHTML =
     '<summary>Guilda</summary>' +
     classes
@@ -64,7 +64,7 @@ function renderLegend(): void {
         const cls = GUILD[id]
         return `<div class="legend-row" title="${cls.role}">
           <img src="${spriteUrl(cls.sprite, 2)}" alt="">
-          <span><b style="color:${cls.color}">${cls.name}</b><small>${cls.role}</small></span>
+          <span><b style="color:${cls.color}">${cls.name}</b></span>
           <span class="chip">${modelName(cls.model)}</span>
         </div>`
       })
@@ -95,18 +95,26 @@ resize()
 
 camera.attach(canvas, point => select(scene.pick(point)))
 
-connect(next => {
-  world = next
+function syncScene(): void {
   if (scene.sync(world)) {
     const { width, height } = scene.worldSize
     camera.fit(canvas.width, canvas.height, width, height)
   }
+}
+
+connect(next => {
+  world = next
+  syncScene()
   renderSummary()
   renderPanel()
 }, setConnection)
 
-// The panel's "há X s" timers tick even when nothing new arrives.
-setInterval(renderPanel, 1000)
+// Every second, even with no new events: idle heroes move on (taverna -> jogos -> caverna)
+// with time alone, and the panel's "há X s" timers tick.
+setInterval(() => {
+  syncScene()
+  renderPanel()
+}, 1000)
 
 let last = performance.now()
 function frame(now: number): void {
