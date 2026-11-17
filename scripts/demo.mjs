@@ -27,12 +27,16 @@ async function tool(session, name, input, extra = {}) {
 }
 
 let callCount = 0
-async function delegate(session, description, steps) {
-  const { classId, reason } = classify({ description })
+async function delegate(session, description, steps, explicitType) {
   const toolUseId = `call-${++callCount}-${run}`
   const agentId = `agent-${callCount}-${run}`
-  const type = `guild:${classId}`
-  await send(session, 'route', { route: { from: 'general-purpose', to: type, description, reason } })
+  let type = explicitType
+  if (!type) {
+    // A generic call, as the router sees it in a live session.
+    const { classId, reason } = classify({ description })
+    type = `guild:${classId}`
+    await send(session, 'route', { route: { from: 'general-purpose', to: type, description, reason } })
+  }
   await send(session, 'PreToolUse', { tool_name: 'Agent', tool_use_id: toolUseId, tool_input: { subagent_type: type, description } })
   await sleep(1500)
   await send(session, 'SubagentStart', { agent_id: agentId, agent_type: type })
@@ -79,6 +83,13 @@ async function blogQuest() {
     ['WebSearch', { query: 'astro content collections' }],
     ['Read', { file_path: 'src/pages/index.jsx' }],
   ])
+  // The build keeps failing: the Mestre escalates to the Arquimago (Fable) on purpose.
+  await delegate(blog, 'Build do Astro quebra só em produção', [
+    ['Bash', { command: 'npm run build' }],
+    ['Read', { file_path: 'astro.config.mjs' }],
+    ['Grep', { pattern: 'import.meta.env' }],
+    ['Edit', { file_path: 'astro.config.mjs' }],
+  ], 'guild:arquimago')
   await send(blog, 'Notification', { message: 'Claude precisa da sua permissão para usar Bash' })
   await sleep(6000)
   await tool(blog, 'Bash', { command: 'npm create astro@latest' })
@@ -101,8 +112,26 @@ async function tccQuest() {
   await send(tcc, 'Stop')
 }
 
+// Sessions that finished a while ago, so the taverna, the sala de jogos and the
+// caverna have someone in them: the map places idle heroes by how long ago
+// their last event was.
+async function veteran(id, project, minutesAgo, quest) {
+  const session = { id, cwd: `/home/guilda/projetos/${project}` }
+  const end = Date.now() - minutesAgo * 60_000
+  await send(session, 'SessionStart', { source: 'startup', ts: end - 120_000 })
+  await send(session, 'UserPromptSubmit', { prompt: quest, ts: end - 90_000 })
+  await send(session, 'Stop', { ts: end })
+}
+
+async function veterans() {
+  await veteran('demo-vet-1', 'blog', 0.5, 'Corrige o RSS do blog')
+  await veteran('demo-vet-2', 'loja-api', 4, 'Adiciona idempotência no webhook de pagamento')
+  await veteran('demo-vet-3', 'tcc-latex', 5, 'Gera o sumário do capítulo 3')
+  await veteran('demo-vet-4', 'loja-api', 15, 'Script de backup do banco da loja')
+}
+
 do {
-  await Promise.all([lojaQuest(), blogQuest(), tccQuest()])
+  await Promise.all([veterans(), lojaQuest(), blogQuest(), tccQuest()])
   console.log('Demo round finished.')
   if (loop) await sleep(8000)
 } while (loop)
