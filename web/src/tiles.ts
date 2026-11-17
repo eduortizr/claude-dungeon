@@ -23,9 +23,33 @@ export const TILE = {
   barrel: 82,
   chest: 89,
   chestBig: 90,
+  chestGold: 91,
+  mimic: 92,
+  stool: 73,
   /** Dagger, sword, axe, hammer: the training room's weapon rack. */
   weapons: [105, 106, 107, 117],
 } as const
+
+/**
+ * Floors the sheet does not have (grass, water, planks, gold), drawn by the
+ * renderer. Codes start at 1000 so they never clash with a sheet index.
+ */
+export const FLOOR = {
+  grass: 1000,
+  grassAlt: 1001,
+  water: 1002,
+  wood: 1003,
+  gold: 1004,
+} as const
+
+export function isDrawnFloor(tile: number): boolean {
+  return tile >= 1000
+}
+
+/** Potions (gray, green, red, blue): shelves in the taverna and the lab. */
+export const POTIONS = [113, 114, 115, 116] as const
+/** Staffs and wands. */
+export const STAFFS = [129, 130, 131] as const
 
 /** Monsters that guard a project's room, picked by the project's name. */
 export const MONSTERS = [108, 109, 110, 120, 121, 122, 123] as const

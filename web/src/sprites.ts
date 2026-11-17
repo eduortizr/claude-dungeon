@@ -1,5 +1,6 @@
 /** Single tiles as image URLs, for the HTML side panel (portraits, class icons). */
-import { TILE_SIZE, drawTile } from './tiles'
+import { drawSprite } from './characters'
+import { TILE_SIZE } from './tiles'
 
 const cache = new Map<string, string>()
 let sheet: HTMLImageElement | undefined
@@ -17,7 +18,7 @@ export function spriteUrl(tile: number, scale = 2): string {
   canvas.width = canvas.height = TILE_SIZE * scale
   const ctx = canvas.getContext('2d')!
   ctx.imageSmoothingEnabled = false
-  drawTile(ctx, sheet, tile, 0, 0, TILE_SIZE * scale)
+  drawSprite(ctx, sheet, tile, 0, 0, TILE_SIZE * scale)
   const url = canvas.toDataURL()
   cache.set(key, url)
   return url
