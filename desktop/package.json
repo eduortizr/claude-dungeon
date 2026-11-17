@@ -1,7 +1,7 @@
 {
   "name": "@claude-dungeon/desktop",
   "productName": "Claude Dungeon",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Claude Dungeon desktop app: the map in its own window, with the server inside.",
   "private": true,
   "main": "dist/main.cjs",

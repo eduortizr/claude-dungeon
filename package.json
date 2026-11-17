@@ -1,6 +1,6 @@
 {
   "name": "claude-dungeon",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Watch your Claude Code sessions as an RPG guild exploring a pixel-art dungeon.",
   "type": "module",
