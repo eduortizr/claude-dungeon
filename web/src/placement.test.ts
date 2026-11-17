@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Hero, HeroStatus, TimelineEntry } from '../../shared/types'
-import { CELEBRATE_MS, SLEEP_MS, placeHeroes, victoryLine } from './placement'
+import { CELEBRATE_MS, EXPLORE_MS, SLEEP_MS, placeHeroes, victoryLine } from './placement'
 
 const NOW = 10_000_000
 
@@ -31,13 +31,15 @@ describe('placeHeroes', () => {
     expect(places.get('c')).toEqual({ kind: 'project', room: 'blog', index: 0 })
   })
 
-  it('celebrates in the taverna, plays in pairs, then sleeps in the caverna', () => {
+  it('celebrates in the taverna, plays in pairs, walks in the floresta, then sleeps in the caverna', () => {
     const places = placeHeroes(
       [
         hero('a', 'idle', 1_000),
         hero('b', 'idle', CELEBRATE_MS + 1),
         hero('c', 'idle', CELEBRATE_MS + 2),
         hero('d', 'idle', SLEEP_MS + 1),
+        hero('e', 'idle', EXPLORE_MS + 1),
+        hero('f', 'idle', SLEEP_MS - 1),
       ],
       NOW,
       4,
@@ -46,6 +48,8 @@ describe('placeHeroes', () => {
     expect(places.get('b')).toEqual({ kind: 'jogos', table: 0, side: 0, rival: 'c' })
     expect(places.get('c')).toEqual({ kind: 'jogos', table: 0, side: 1, rival: 'b' })
     expect(places.get('d')).toEqual({ kind: 'caverna', index: 0 })
+    expect(places.get('e')).toEqual({ kind: 'floresta', index: 0 })
+    expect(places.get('f')).toEqual({ kind: 'floresta', index: 1 })
   })
 
   it('sends a player with no partner or no free table to the taverna', () => {

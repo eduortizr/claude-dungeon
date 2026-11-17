@@ -4,20 +4,23 @@
  *
  *   working / waiting        -> its project's room
  *   idle < CELEBRATE_MS      -> the taverna, celebrating the mission it just finished
- *   idle < SLEEP_MS          -> the sala de jogos, paired with another idle hero
+ *   idle < EXPLORE_MS        -> the sala de jogos, paired with another idle hero
  *                               (no partner or no free table: back to the taverna)
+ *   idle < SLEEP_MS          -> out in the floresta: fishing, picking herbs, resting on a log
  *   idle longer              -> asleep by the fire in the caverna
  *   offline                  -> out through the gate
  */
 import type { Hero } from '../../shared/types'
 
 export const CELEBRATE_MS = 2 * 60_000
-export const SLEEP_MS = 10 * 60_000
+export const EXPLORE_MS = 10 * 60_000
+export const SLEEP_MS = 25 * 60_000
 
 export type Place =
   | { kind: 'project'; room: string; index: number }
   | { kind: 'taverna'; index: number }
   | { kind: 'jogos'; table: number; side: 0 | 1; rival: string }
+  | { kind: 'floresta'; index: number }
   | { kind: 'caverna'; index: number }
   | { kind: 'gone' }
 
@@ -27,6 +30,7 @@ export function placeHeroes(heroes: readonly Hero[], now: number, tableCount: nu
   const taverna: Hero[] = []
   const players: Hero[] = []
   let sleepers = 0
+  let walkers = 0
 
   const ordered = [...heroes].sort((a, b) => a.startedAt - b.startedAt || a.id.localeCompare(b.id))
   for (const hero of ordered) {
@@ -39,7 +43,8 @@ export function placeHeroes(heroes: readonly Hero[], now: number, tableCount: nu
     } else {
       const idleFor = now - hero.lastEventAt
       if (idleFor < CELEBRATE_MS) taverna.push(hero)
-      else if (idleFor < SLEEP_MS) players.push(hero)
+      else if (idleFor < EXPLORE_MS) players.push(hero)
+      else if (idleFor < SLEEP_MS) places.set(hero.id, { kind: 'floresta', index: walkers++ })
       else places.set(hero.id, { kind: 'caverna', index: sleepers++ })
     }
   }
