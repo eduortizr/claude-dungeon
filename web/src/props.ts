@@ -20,9 +20,14 @@ export const GROUND_PROPS: ReadonlySet<PropKind> = new Set<PropKind>([
   'fireplace',
   'lantern',
   'menu',
-  'poster',
-  'gameshelf',
-  'dartboard',
+  'dragonhead',
+  'griffonhead',
+  'basiliskhead',
+  'wallarmor',
+  'scratches',
+  'soot',
+  'wallmap',
+  'wallchart',
   'ticker',
   'torch',
   'spikes',
@@ -40,6 +45,15 @@ type Ctx = CanvasRenderingContext2D
 function rect(ctx: Ctx, color: string, x: number, y: number, w: number, h: number): void {
   ctx.fillStyle = color
   ctx.fillRect(x, y, w, h)
+}
+
+/** A filled ellipse made of 1 px rows, so its edge stays crisp like the rest of the pixel art. */
+function disc(ctx: Ctx, color: string, cx: number, cy: number, rx: number, ry: number): void {
+  ctx.fillStyle = color
+  for (let y = -ry; y <= ry; y++) {
+    const half = Math.round(rx * Math.sqrt(1 - (y / ry) ** 2))
+    ctx.fillRect(cx - half, cy + y, half * 2, 1)
+  }
 }
 
 /** A cheap stable "random" per tile, for colors that vary from prop to prop. */
@@ -220,37 +234,87 @@ export function drawProp(ctx: Ctx, prop: Prop, c: PropContext): void {
       break
 
     // ---- sala de jogos -----------------------------------------------------
-    case 'poster':
-      rect(ctx, '#e8d9b0', px + 2, py + 2, 12, 13)
-      rect(ctx, '#c0392b', px + 5, py + 5, 6, 4) // a little red dragon
-      rect(ctx, '#c0392b', px + 4, py + 4, 2, 2)
-      rect(ctx, '#c0392b', px + 10, py + 9, 2, 2)
-      rect(ctx, '#ffd34d', px + 6, py + 6, 1, 1)
-      rect(ctx, '#2b1d2e', px + 4, py + 12, 8, 1)
-      break
-    case 'gameshelf': {
-      rect(ctx, '#5a3a22', px, py + 3, 16, 12)
-      const colors = ['#c0392b', '#2980b9', '#27ae60', '#8e44ad', '#f39c12']
-      for (let k = 0; k < 5; k++) rect(ctx, colors[k]!, px + 1 + k * 3, py + 4 + (k % 2), 2, 4 - (k % 2))
-      for (let k = 0; k < 3; k++) rect(ctx, colors[(k + 2) % 5]!, px + 1, py + 9 + k * 2, 14, 1)
+    case 'dragonhead': {
+      // A green dragon's head on a wooden shield, mouth open.
+      rect(ctx, '#3d2414', px + 1, py + 1, 14, 14)
+      rect(ctx, '#5a3a22', px + 2, py + 2, 12, 12)
+      rect(ctx, '#e8785a', px + 3, py + 2, 2, 3) // horns
+      rect(ctx, '#e8785a', px + 11, py + 2, 2, 3)
+      rect(ctx, '#2f7a4a', px + 4, py + 4, 8, 7)
+      rect(ctx, '#4caf6a', px + 4, py + 4, 8, 2)
+      rect(ctx, '#2f7a4a', px + 3, py + 8, 10, 3) // snout
+      rect(ctx, '#f2c544', px + 5, py + 5, 2, 2) // eyes
+      rect(ctx, '#f2c544', px + 9, py + 5, 2, 2)
+      rect(ctx, '#1a1220', px + 6, py + 6, 1, 1)
+      rect(ctx, '#1a1220', px + 10, py + 6, 1, 1)
+      rect(ctx, '#1a1220', px + 5, py + 9, 6, 1) // mouth
+      rect(ctx, '#f3eadb', px + 5, py + 10, 1, 2) // fangs
+      rect(ctx, '#f3eadb', px + 10, py + 10, 1, 2)
       break
     }
-    case 'dartboard':
-      ctx.fillStyle = '#1a1014'
-      ctx.beginPath()
-      ctx.arc(px + 8, py + 8, 6, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.fillStyle = '#c0392b'
-      ctx.beginPath()
-      ctx.arc(px + 8, py + 8, 4, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.fillStyle = '#f3eadb'
-      ctx.beginPath()
-      ctx.arc(px + 8, py + 8, 2, 0, Math.PI * 2)
-      ctx.fill()
-      rect(ctx, '#ffd34d', px + 10, py + 5, 3, 1)
-      rect(ctx, '#ffd34d', px + 5, py + 9, 3, 1)
+    case 'griffonhead': {
+      // A griffin: an eagle's head with a golden crest and a hooked beak.
+      rect(ctx, '#3d2414', px + 1, py + 1, 14, 14)
+      rect(ctx, '#5a3a22', px + 2, py + 2, 12, 12)
+      rect(ctx, '#b9824a', px + 4, py + 3, 8, 8)
+      rect(ctx, '#d9a441', px + 5, py + 2, 2, 3) // crest
+      rect(ctx, '#d9a441', px + 8, py + 2, 3, 2)
+      rect(ctx, '#f3eadb', px + 4, py + 4, 8, 3) // white head
+      rect(ctx, '#1a1220', px + 5, py + 5, 1, 2) // eye
+      rect(ctx, '#f2c544', px + 4, py + 7, 4, 1)
+      rect(ctx, '#ff9a2e', px + 6, py + 7, 6, 3) // beak
+      rect(ctx, '#c9651a', px + 9, py + 10, 3, 2)
+      rect(ctx, '#b9824a', px + 3, py + 9, 3, 4) // neck feathers
       break
+    }
+    case 'basiliskhead': {
+      // A basilisk: a lizard's flat head, a spiked crest and a slit yellow eye.
+      rect(ctx, '#3d2414', px + 1, py + 1, 14, 14)
+      rect(ctx, '#5a3a22', px + 2, py + 2, 12, 12)
+      rect(ctx, '#7d4fd6', px + 4, py + 2, 2, 2) // crest spikes
+      rect(ctx, '#7d4fd6', px + 7, py + 1, 2, 3)
+      rect(ctx, '#7d4fd6', px + 10, py + 2, 2, 2)
+      rect(ctx, '#2f9fb0', px + 3, py + 4, 10, 7)
+      rect(ctx, '#9fe8f0', px + 4, py + 4, 8, 1)
+      rect(ctx, '#f2c544', px + 4, py + 6, 3, 3)
+      rect(ctx, '#f2c544', px + 9, py + 6, 3, 3)
+      rect(ctx, '#1a1220', px + 5, py + 6, 1, 3) // slits
+      rect(ctx, '#1a1220', px + 10, py + 6, 1, 3)
+      rect(ctx, '#c0392b', px + 6, py + 11, 4, 2) // forked tongue
+      rect(ctx, '#c0392b', px + 5, py + 13, 1, 1)
+      rect(ctx, '#c0392b', px + 10, py + 13, 1, 1)
+      break
+    }
+    case 'wallarmor': {
+      // A breastplate hung on the wall between crossed swords.
+      for (let k = 0; k < 10; k++) {
+        rect(ctx, '#aab4c4', px + 2 + k, py + 2 + k, 2, 2)
+        rect(ctx, '#aab4c4', px + 12 - k, py + 2 + k, 2, 2)
+      }
+      rect(ctx, '#5a3a22', px + 6, py + 11, 4, 3) // hilts
+      rect(ctx, '#2b2b36', px + 4, py + 3, 8, 10)
+      rect(ctx, v === 0 ? '#8a94a8' : '#c9a36b', px + 5, py + 4, 6, 8)
+      rect(ctx, '#d6dde6', px + 5, py + 4, 2, 5)
+      rect(ctx, '#2b2b36', px + 6, py + 3, 4, 2) // neck
+      rect(ctx, v === 0 ? '#c0392b' : '#2980b9', px + 5, py + 9, 6, 2) // sash
+      break
+    }
+    case 'armorstand': {
+      // An armor stand with a tunic and a helmet.
+      shadow(ctx, px + 8, py + 15, 6, 2)
+      rect(ctx, '#3d2414', px + 4, py + 14, 8, 2)
+      rect(ctx, '#5a3a22', px + 7, py + 7, 2, 8)
+      rect(ctx, '#8a94a8', px + 5, py - 6, 6, 5) // helmet
+      rect(ctx, '#d6dde6', px + 5, py - 6, 2, 4)
+      rect(ctx, '#2b2b36', px + 6, py - 3, 4, 1)
+      rect(ctx, v === 0 ? '#2f6b4a' : '#7a1f1a', px + 3, py - 1, 10, 10) // tunic
+      rect(ctx, v === 0 ? '#4c9a4f' : '#c0392b', px + 3, py - 1, 3, 10)
+      rect(ctx, '#2b1d2e', px + 3, py + 4, 10, 1) // belt
+      rect(ctx, '#ffd34d', px + 7, py + 4, 2, 1)
+      rect(ctx, v === 0 ? '#2f6b4a' : '#7a1f1a', px + 4, py + 9, 3, 3) // skirt
+      rect(ctx, v === 0 ? '#2f6b4a' : '#7a1f1a', px + 9, py + 9, 3, 3)
+      break
+    }
     case 'd20': {
       shadow(ctx, px + 8, py + 15, 6)
       rect(ctx, '#5f5a6b', px + 3, py + 11, 10, 4)
@@ -270,23 +334,31 @@ export function drawProp(ctx: Ctx, prop: Prop, c: PropContext): void {
       ctx.fillText('20', px + 8, py + 5)
       break
     }
-    case 'rpgtable': {
-      // Parchment map with a grid and minis, the master's screen on the left side.
-      rect(ctx, '#e8d9b0', px - 2, py + 2, 20, 10)
+    case 'roundtable': {
+      // A big round table, three tiles across: planks, a green felt, the campaign map and minis.
+      const cx = px + 8
+      const cy = py + 9
+      disc(ctx, 'rgba(0, 0, 0, 0.3)', cx, cy + 4, 24, 20)
+      disc(ctx, '#2e1b0f', cx, cy + 3, 23, 19)
+      disc(ctx, '#5a3a22', cx, cy, 23, 19)
+      disc(ctx, '#7a5030', cx, cy - 1, 21, 17)
+      disc(ctx, '#2f6b4a', cx, cy - 1, 17, 13)
+      disc(ctx, '#3d8560', cx - 3, cy - 4, 9, 5)
+      rect(ctx, '#e8d9b0', cx - 9, cy - 6, 18, 11) // the campaign map
       ctx.fillStyle = 'rgba(90, 58, 34, 0.35)'
-      for (let gx = 0; gx < 20; gx += 4) ctx.fillRect(px - 2 + gx, py + 2, 1, 10)
-      for (let gy = 0; gy < 10; gy += 4) ctx.fillRect(px - 2, py + 2 + gy, 20, 1)
-      rect(ctx, '#6b8f5a', px + 9, py + 4, 5, 3) // a forest on the map
-      rect(ctx, '#5f8fc9', px + 1, py + 8, 4, 2) // a lake
-      rect(ctx, '#c0392b', px + 6, py + 5, 2, 3) // the dragon mini
-      rect(ctx, '#ffd34d', px + 12, py + 8, 1, 2) // party minis
-      rect(ctx, '#5fd38d', px + 14, py + 8, 1, 2)
-      rect(ctx, '#9b7bff', px + 13, py + 9, 1, 2)
-      rect(ctx, '#7a1f1a', px - 4, py - 2, 5, 12) // master's screen
-      rect(ctx, '#ffd34d', px - 3, py - 1, 3, 1)
-      rect(ctx, '#ffd34d', px - 3, py + 8, 3, 1)
-      const roll = Math.floor(time * 0.7) % 2 === 0
-      rect(ctx, roll ? '#fdf7ea' : '#a983ff', px + 3, py + 9, 2, 2) // a die
+      for (let gx = 0; gx < 18; gx += 4) ctx.fillRect(cx - 9 + gx, cy - 6, 1, 11)
+      for (let gy = 0; gy < 11; gy += 4) ctx.fillRect(cx - 9, cy - 6 + gy, 18, 1)
+      rect(ctx, '#6b8f5a', cx + 2, cy - 5, 5, 3)
+      rect(ctx, '#5f8fc9', cx - 8, cy, 5, 3)
+      rect(ctx, '#c0392b', cx - 1, cy - 2, 2, 3) // the dragon mini
+      rect(ctx, '#ffd34d', cx + 3, cy + 1, 1, 2) // party minis
+      rect(ctx, '#5fd38d', cx + 5, cy + 1, 1, 2)
+      rect(ctx, '#9b7bff', cx + 4, cy + 2, 1, 2)
+      rect(ctx, Math.floor(time * 0.7) % 2 === 0 ? '#fdf7ea' : '#a983ff', cx - 6, cy + 3, 2, 2) // a die
+      rect(ctx, '#ffd34d', cx - 15, cy - 1, 2, 2) // candles on the rim
+      rect(ctx, '#ffd34d', cx + 14, cy - 1, 2, 2)
+      rect(ctx, '#f3eadb', cx - 15, cy + 1, 2, 2)
+      rect(ctx, '#f3eadb', cx + 14, cy + 1, 2, 2)
       break
     }
 
@@ -308,6 +380,52 @@ export function drawProp(ctx: Ctx, prop: Prop, c: PropContext): void {
         ctx.fillRect(Math.round(px + 8 + Math.cos(a) * 11) - 1, Math.round(py + 13 + Math.sin(a) * 5) - 1, 2, 2)
       }
       ctx.restore()
+      break
+    }
+    case 'scratches': {
+      // Claw and blade marks: three slashes on the floor (0-3), across the wall (4-5) or down the side wall (6-7).
+      const dark = 'rgba(30, 18, 20, 0.7)'
+      const light = 'rgba(230, 220, 205, 0.35)'
+      if (v < 4) {
+        const flip = v % 2
+        for (let k = 0; k < 3; k++) {
+          for (let n = 0; n < 8; n++) {
+            const x = px + 3 + k * 3 + (flip ? 7 - n : n)
+            rect(ctx, dark, x, py + 3 + n + k, 1, 2)
+            rect(ctx, light, x + 1, py + 3 + n + k, 1, 1)
+          }
+        }
+      } else if (v < 6) {
+        for (let k = 0; k < 3; k++) {
+          rect(ctx, dark, px + 2 + k, py + 4 + k * 3 + (v - 4), 11 - k * 2, 1)
+          rect(ctx, light, px + 3 + k, py + 5 + k * 3 + (v - 4), 8 - k * 2, 1)
+        }
+      } else {
+        for (let k = 0; k < 3; k++) {
+          rect(ctx, dark, px + 4 + k * 3, py + 2 + (v - 6) * 2, 1, 11 - k * 2)
+          rect(ctx, light, px + 5 + k * 3, py + 3 + (v - 6) * 2, 1, 8 - k * 2)
+        }
+      }
+      break
+    }
+    case 'soot': {
+      // A scorch from a spell: black smudges with a dull violet heart (0-3 on the floor, 4 on the wall).
+      if (v === 4) {
+        rect(ctx, 'rgba(15, 10, 18, 0.5)', px + 4, py + 2, 8, 12)
+        rect(ctx, 'rgba(15, 10, 18, 0.5)', px + 6, py + 1, 4, 14)
+        rect(ctx, 'rgba(90, 60, 130, 0.25)', px + 6, py + 6, 4, 6)
+      } else {
+        // Ragged: a dense core of specks thinning out, a couple of violet flecks from the spell.
+        for (let k = 0; k < 26; k++) {
+          const a = seed(prop.x + v, prop.y, k) * Math.PI * 2
+          const d = Math.pow(seed(prop.x, prop.y + v, k + 40), 1.4) * 7
+          const x = Math.round(px + 8 + Math.cos(a) * d)
+          const y = Math.round(py + 9 + Math.sin(a) * d * 0.7)
+          rect(ctx, d < 3 ? 'rgba(18, 12, 22, 0.62)' : 'rgba(18, 12, 22, 0.4)', x, y, d < 4 ? 2 : 1, d < 4 ? 2 : 1)
+        }
+        rect(ctx, 'rgba(120, 90, 190, 0.4)', px + 7 + (v % 2), py + 8, 1, 1)
+        rect(ctx, 'rgba(120, 90, 190, 0.3)', px + 9, py + 10, 1, 1)
+      }
       break
     }
     case 'dummy': {
@@ -621,7 +739,64 @@ export function drawProp(ctx: Ctx, prop: Prop, c: PropContext): void {
       rect(ctx, '#7a7588', px + 22, py + 6, 4, 0.6)
       break
     }
+    case 'wallmap': {
+      // A parchment map on the wall: coastline, a dotted route and an X.
+      rect(ctx, '#3d2414', px + 1, py + 1, 14, 14)
+      rect(ctx, '#e8d9b0', px + 2, py + 2, 12, 12)
+      rect(ctx, '#d6c28f', px + 2, py + 12, 12, 2)
+      rect(ctx, '#6b8f5a', px + 3, py + 3, 5, 4)
+      rect(ctx, '#6b8f5a', px + 7, py + 8, 6, 3)
+      rect(ctx, '#5f8fc9', px + 9, py + 3, 4, 3)
+      for (let k = 0; k < 5; k++) rect(ctx, '#7a1f1a', px + 4 + k * 2, py + 7 - (k % 2), 1, 1)
+      rect(ctx, '#c0392b', px + 11, py + 9, 2, 1)
+      rect(ctx, '#c0392b', px + 11, py + 10, 1, 1)
+      break
+    }
+    case 'wallchart': {
+      // A chart board: a line that climbs and falls, bars below. v 0 = green, v 1 = gold.
+      const line = v === 0 ? '#5fd38d' : '#f2c544'
+      rect(ctx, '#3d2414', px, py + 1, 16, 14)
+      rect(ctx, '#0f1a14', px + 1, py + 2, 14, 12)
+      rect(ctx, 'rgba(255,255,255,0.18)', px + 2, py + 7, 12, 1)
+      const ys = v === 0 ? [7, 5, 6, 3, 4, 1, 0] : [1, 2, 0, 3, 5, 4, 6]
+      ys.forEach((y, k) => {
+        rect(ctx, line, px + 2 + k * 2, py + 3 + y, 2, 1)
+        if (k > 0) rect(ctx, line, px + 2 + k * 2, py + 3 + Math.min(y, ys[k - 1]!), 1, Math.abs(y - ys[k - 1]!) + 1)
+      })
+      for (let k = 0; k < 6; k++) rect(ctx, 'rgba(255,255,255,0.3)', px + 2 + k * 2, py + 12 - ((k * 7 + v * 3) % 3), 1, 2)
+      break
+    }
+    case 'maptable': {
+      // A side table with a big map and a compass.
+      shadow(ctx, px + 8, py + 15, 7)
+      rect(ctx, '#3d2414', px + 1, py + 11, 3, 5)
+      rect(ctx, '#3d2414', px + 12, py + 11, 3, 5)
+      rect(ctx, '#5a3a22', px, py + 4, 16, 8)
+      rect(ctx, '#7a5030', px, py + 4, 16, 1)
+      rect(ctx, '#e8d9b0', px + 2, py + 5, 12, 6)
+      rect(ctx, '#6b8f5a', px + 3, py + 6, 4, 3)
+      rect(ctx, '#5f8fc9', px + 8, py + 8, 4, 2)
+      rect(ctx, '#c0392b', px + 10, py + 6, 1, 1)
+      rect(ctx, '#d9a441', px + 12, py + 5, 2, 2)
+      break
+    }
+
     // ---- decoration --------------------------------------------------------
+    case 'lamppost': {
+      // An iron post with a glass lantern: lights the way out to the forest.
+      shadow(ctx, px + 8, py + 15, 4, 1.5)
+      rect(ctx, '#2b2b36', px + 7, py - 4, 2, 19)
+      rect(ctx, '#2b2b36', px + 5, py + 13, 6, 2)
+      rect(ctx, '#2b2b36', px + 4, py - 12, 8, 2)
+      rect(ctx, '#4a4a58', px + 5, py - 14, 6, 2)
+      rect(ctx, '#3a3a48', px + 4, py - 10, 1, 7)
+      rect(ctx, '#3a3a48', px + 11, py - 10, 1, 7)
+      rect(ctx, '#ffd34d', px + 5, py - 10, 6, 6)
+      rect(ctx, '#fff2b0', px + 7, py - 9, 2, 4)
+      rect(ctx, '#2b2b36', px + 4, py - 4, 8, 2)
+      glow(ctx, px + 8, py - 7, 30 + Math.sin(time * 4 + prop.x) * 1.5, 'rgba(255, 200, 90, ALPHA)', 0.3)
+      break
+    }
     case 'torch': {
       // An iron sconce on the wall and a flame that lights the room around it.
       rect(ctx, '#2b2b36', px + 7, py + 7, 2, 7)

@@ -9,6 +9,8 @@ import { findPath, type Point } from './pathfinding'
 
 const WALK_SPEED = 5 // tiles per second
 const LUNGE_TIME = 0.18
+/** How long someone who just struck, rolled or spoke stays highlighted on the map. */
+export const SPOTLIGHT_TIME = 0.7
 
 export interface Bubble {
   text: string
@@ -46,6 +48,12 @@ export class Actor {
   shove: Point = { x: 0, y: 0 }
   /** A little hop to the beat (the taverna's minstrel plays), in pixels. */
   hop = 0
+  /** Seconds left of the highlight on whoever just acted (struck, rolled a die, spoke). */
+  spot = 0
+  /** The highlight is for a blow: an arrow shows over the one who struck. */
+  spotStrike = false
+  /** The bubble last seen, to notice a new line. */
+  seenBubble?: Bubble
   private path: Point[] = []
   private target?: Point
 
@@ -92,6 +100,12 @@ export class Actor {
     this.path = []
   }
 
+  /** Puts the spotlight on this actor for a moment. */
+  act(isStrike = false): void {
+    this.spotStrike = isStrike || (this.spot > 0 && this.spotStrike) // a line said during a blow keeps the arrow
+    this.spot = SPOTLIGHT_TIME
+  }
+
   attack(toward: Point): void {
     this.lunge = LUNGE_TIME
     this.lungeTo = toward
@@ -101,6 +115,7 @@ export class Actor {
   update(dt: number): void {
     this.lunge = Math.max(0, this.lunge - dt)
     this.hurt = Math.max(0, this.hurt - dt)
+    this.spot = Math.max(0, this.spot - dt)
     if (this.shove.x !== 0 || this.shove.y !== 0) {
       const keep = Math.max(0, 1 - dt * 9)
       this.shove = Math.abs(this.shove.x) + Math.abs(this.shove.y) < 0.2 ? { x: 0, y: 0 } : { x: this.shove.x * keep, y: this.shove.y * keep }

@@ -4,6 +4,22 @@
  */
 import type { Point } from './pathfinding'
 
+/** A rectangle in world pixels: where the action is (the arena with a fight). */
+export interface Area {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/** Moves the view's start so `[from, to]` is in sight when the world is bigger than the view; if it all fits, nothing changes. */
+function reveal(start: number, view: number, from: number, to: number, world: number): number {
+  if (world <= view) return start
+  if (from >= start && to <= start + view) return start
+  const centered = (from + to) / 2 - view / 2
+  return Math.max(0, Math.min(world - view, Math.min(centered, from)))
+}
+
 const MIN_ZOOM = 1
 const MAX_ZOOM = 7
 const CLICK_SLOP = 4
@@ -17,8 +33,12 @@ export class Camera {
   pixelRatio = 1
   private hasUserMoved = false
 
-  /** Centers the world, as large as fits; keeps the user's view once they moved it. */
-  fit(viewWidth: number, viewHeight: number, worldWidth: number, worldHeight: number, force = false): void {
+  /**
+   * Centers the world, as large as fits; keeps the user's view once they moved it.
+   * When the world is bigger than the screen, `focus` (the arena with a fight) is
+   * brought into view instead of staying off-screen; if it all fits, nothing is lost.
+   */
+  fit(viewWidth: number, viewHeight: number, worldWidth: number, worldHeight: number, force = false, focus?: Area): void {
     if (this.hasUserMoved && !force) return
     const fits = Math.floor(Math.min(viewWidth / worldWidth, viewHeight / worldHeight))
     this.zoom = Math.min(MAX_ZOOM, Math.max(2, fits))
@@ -26,6 +46,10 @@ export class Camera {
     this.y = (worldHeight - viewHeight / this.zoom) / 2
     if (this.x > 0) this.x = 0 // wider than the screen: start from the cave on the left
     if (this.y > 0) this.y = 0 // taller: start from the rooms; the forest's far edge can wait
+    if (focus) {
+      this.x = reveal(this.x, viewWidth / this.zoom, focus.x, focus.x + focus.width, worldWidth)
+      this.y = reveal(this.y, viewHeight / this.zoom, focus.y, focus.y + focus.height, worldHeight)
+    }
   }
 
   toWorld(screenX: number, screenY: number): Point {

@@ -18,7 +18,7 @@ Mapa pixel art (tema RPG) das sessões do Claude Code e uma guilda de subagentes
 
 ## Salas, Arquimago e app (2026-11-17)
 
-- Salas da guilda (pedido do aluno): Taverna = acabou há < 2 min; Sala de jogos = parado 2–10 min, em duplas; Caverna = parado > 10 min (dorme); Sala de treinamento = quartel dos subagentes, que saem de lá quando convocados. Regras em `web/src/placement.ts` (pura, testada); jogos em `web/src/games.ts`.
+- Salas da guilda (pedido do aluno): Taverna = acabou há < 2 min; Sala de jogos = parado 2–10 min, em volta da mesa redonda do Mestre; Caverna = parado > 10 min (dorme); Sala de treinamento = quartel dos subagentes, que saem de lá quando convocados. Regras em `web/src/placement.ts` (pura, testada); jogos em `web/src/games.ts`.
 - Arquimago (`guild:arquimago`, Fable 5.2): só escalação; o roteador nunca escolhe (teste em `router.test.ts`).
 - App Electron em `desktop/`: `startServer()` (`server/src/app.ts`) roda dentro do app; janela + bandeja; "Iniciar com o Windows" abre com `--hidden`. `npm run app` (sem instalar), `npm run app:dist` (instalador NSIS em `desktop/release/`, ~96 MB, sem assinatura de código). A versão do `electron` fica fixa no `desktop/package.json` (o electron-builder recusa faixa `^`). Dados do app em `%APPDATA%\Claude Dungeon\world.json`.
 
@@ -44,3 +44,13 @@ Mapa pixel art (tema RPG) das sessões do Claude Code e uma guilda de subagentes
 - **Portas:** `map.doors` (portas das salas + portão da caverna); `drawDoors` abre quando alguém chega a < 1,9 tile e fecha 0,7 s depois.
 - **Residentes novos:** Mestre do Claude (sprite -3, sala de jogos, dragãozinho `drawDragon`, conversa com ociosos e mestra D&D com `rpgScene`/`rpgLines`) e Menestrel (sprite -4, palquinho da taverna, notas flutuando; heróis na taverna balançam).
 - **Floresta:** `web/src/wildlife.ts` (funções puras do tempo): cervo, coelho e raposa cruzam a trilha, patos e peixes no lago. Decoração nova (`torch`, `spikes`, `cobweb`, `bones`, `plant`, `fern`, `stage`) em `props.ts`.
+
+## Segunda leva de "mais vida" (2026-11-17)
+
+- **Arena vazia (causa):** `syncRooms` criava sala para todo projeto com herói não offline, mesmo parado na taverna/jogos/floresta; as salas ocupavam as primeiras posições, empurravam a sala de quem trabalhava para fora da tela (a câmera começa na caverna, à esquerda) e ficavam vazias. Agora `activeProjects` (`placement.ts`, testada) só dá arena a quem está trabalhando, esperando ou com subagente em missão; a sala some quando a luta acaba. `ARENA_W` = `ROOM_W*2 + 7` (29), ~60 vagas por arena (`map.test.ts`: únicas e todas alcançáveis).
+- **Quem age:** `Actor.act()`/`spot` (0,7 s): anel e brilho no chão, etiqueta acesa na cor da classe (dourado para herói) e seta sobre quem bate (`drawSpotlight` em `scene.ts`). Fala nova (bolha nova) também acende; é detectada em `update` por troca de `actor.bubble`.
+- **Sala de jogos:** uma mesa redonda 3x3 (`roundtable`), Mestre na ponta (com o dragão) e 11 assentos em volta (`SEATS` em `map.ts`); heróis ociosos ocupam os primeiros, membros da guilda os 2 últimos (`room.guests`). `Place` agora é `{ kind: 'jogos', seat }`. Acabaram dardos e os jogos de dados/cartas/braço de ferro (`games.ts` ainda os exporta, sem uso na cena). A campanha (`campaign()`) roda a cada ~10 s para até 4 sentados: cena do Mestre, d20 (`drawD20`) e placar "Mestre x Grupo" sobre a mesa. Parede: cabeças de dragão, grifo e basilisco, armaduras na parede e dois suportes de armadura.
+- **Taverna:** palco do menestrel em `P(8, 4)`. **Treino:** props `scratches` e `soot`. **Câmara de ouro:** `wallmap`, `wallchart`, `maptable`; o Velho Mercador anda (`Resident.stops`, `merchantWalk`) entre a mesa e as paradas, sem deixar de trabalhar nem falar.
+- **Caverna para corredor:** 6 tiles de transição (`FLOOR.blend0..5`, `BLEND_SAND`, grãos 2x2 por ruído do tile; não consome o `random()` do mapa), tochas nas paredes do corredor (fora das portas) e dois `lamppost` no portão da floresta.
+- **Noite:** `web/src/daylight.ts` (`nightLevel`, pura): escuro das 18:30 às 06:00, 5 min de transição. `drawNight` em `scene.ts` desenha um véu azul num canvas à parte e fura buracos quentes nas luzes (`findLights`); testar com o relógio falso (`Date.now` somado a um deslocamento: o véu usa `new Date(Date.now())`).
+- Prints: scripts descartáveis no scratchpad (`night.mjs` com `AT=19:00`). Mapa mais largo que a tela: a arena do projeto pode ficar metade fora da vista até arrastar o mapa.

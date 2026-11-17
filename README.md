@@ -12,7 +12,7 @@ Veja suas sessões do [Claude Code](https://claude.com/claude-code) como uma gui
   | Sala | Quem está lá | O que acontece |
   | --- | --- | --- |
   | 🍺 Taverna | acabou uma missão há menos de 2 min | conta a vitória com os dados reais ("Missão cumprida em 3min: corrige o login"); lareira, taverneiro e conversa fiada |
-  | 🎲 Sala de jogos | parado de 2 a 10 min, em duplas | uma campanha de **Masmorras & Dragões** (o mestre narra, o jogador rola o d20 contra a CD), dados, cartas ou queda de braço, com placar e provocações |
+  | 🎲 Sala de jogos | parado de 2 a 10 min | uma **mesa redonda** com o Mestre do Claude na ponta: ele narra a cena e cada jogador rola o d20 contra a CD, com placar "Mestre x Grupo" |
   | 🌲 Floresta | parado de 10 a 25 min | lá fora, depois do portão: pesca no lago, colhe ervas, descansa no tronco |
   | 🔥 Caverna | parado há mais de 25 min | dorme perto da fogueira (zZz) |
   | ⚔️ Sala de treinamento | os subagentes da guilda | cada classe treina no seu alvo: o Mago e o Arquimago lançam magia no cristal e no orbe, o Ladino arremessa adagas, o Bardo atira no alvo, Guerreiro e Clérigo batem nos bonecos |
@@ -171,6 +171,7 @@ npm run typecheck
 
 ### Mais vida no mapa
 
-- **Arenas:** as salas de projeto têm o tamanho de duas salas, com espaço para uma dúzia de lutadores sem sobrepor; o monstro revida, às vezes surge um **chefe** gigante, e há tochas, espinhos, teias e ossos.
+- **Arenas:** só existe sala de projeto enquanto há luta (quem só descansa não ocupa arena vazia); ela é larga, com espaço para dezenas de lutadores sem sobrepor; o monstro revida, às vezes surge um **chefe** gigante, e há tochas, espinhos, teias e ossos. Quem bate, rola o dado ou fala fica **em destaque** (anel, etiqueta acesa e uma seta).
 - **Guilda em movimento:** quem não está em missão alterna a cada minuto entre treino, taverna, sala de jogos e floresta (`web/src/routine.ts`).
+- **Noite:** das 18:30 às 06:00 (hora local) o mapa escurece aos poucos, azulado, e as tochas, a lareira, a fogueira e os lampiões ficam mais fortes. O corredor tem tochas e a terra da caverna se mistura à areia; a sala de treino tem marcas de arranhão e fuligem de feitiço; o Velho Mercador anda entre a mesa e os mapas e gráficos da Câmara de ouro.
 - **Vida nas salas:** portas que abrem e fecham, o **Mestre do Claude** (com um dragãozinho) mestrando Masmorras & Dragões na sala de jogos, um **menestrel** tocando na taverna e animais (cervo, coelho, raposa, patos, peixes) na floresta.

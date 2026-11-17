@@ -4,8 +4,8 @@
  *
  *   working / waiting        -> its project's room
  *   idle < CELEBRATE_MS      -> the taverna, celebrating the mission it just finished
- *   idle < EXPLORE_MS        -> the sala de jogos, paired with another idle hero
- *                               (no partner or no free table: back to the taverna)
+ *   idle < EXPLORE_MS        -> the sala de jogos, at the round table with the Mestre
+ *                               (no free seat: back to the taverna)
  *   idle < SLEEP_MS          -> out in the floresta: fishing, picking herbs, resting on a log
  *   idle longer              -> asleep by the fire in the caverna
  *   offline                  -> out through the gate
@@ -19,12 +19,27 @@ export const SLEEP_MS = 25 * 60_000
 export type Place =
   | { kind: 'project'; room: string; index: number }
   | { kind: 'taverna'; index: number }
-  | { kind: 'jogos'; table: number; side: 0 | 1; rival: string }
+  | { kind: 'jogos'; seat: number }
   | { kind: 'floresta'; index: number }
   | { kind: 'caverna'; index: number }
   | { kind: 'gone' }
 
-export function placeHeroes(heroes: readonly Hero[], now: number, tableCount: number): Map<string, Place> {
+/**
+ * Which projects need an arena: the ones with a fight going on (a hero at work, waiting for the user, or with
+ * a party member out on a mission). A project whose sessions are only resting has no arena: it would stand
+ * empty, push the fights off the screen and make the map look deserted.
+ */
+export function activeProjects(heroes: readonly Hero[]): Set<string> {
+  const active = new Set<string>()
+  for (const hero of heroes) {
+    if (hero.status === 'working' || hero.status === 'waiting' || (hero.status !== 'offline' && hero.party.some(m => m.status === 'working'))) {
+      active.add(hero.room)
+    }
+  }
+  return active
+}
+
+export function placeHeroes(heroes: readonly Hero[], now: number, seatCount: number): Map<string, Place> {
   const places = new Map<string, Place>()
   const perRoom = new Map<string, number>()
   const taverna: Hero[] = []
@@ -49,15 +64,10 @@ export function placeHeroes(heroes: readonly Hero[], now: number, tableCount: nu
     }
   }
 
-  // Pair the players in order; whoever is left without a partner or a table drinks instead.
-  const pairs = Math.min(Math.floor(players.length / 2), tableCount)
-  for (let table = 0; table < pairs; table++) {
-    const a = players[table * 2]!
-    const b = players[table * 2 + 1]!
-    places.set(a.id, { kind: 'jogos', table, side: 0, rival: b.id })
-    places.set(b.id, { kind: 'jogos', table, side: 1, rival: a.id })
-  }
-  taverna.push(...players.slice(pairs * 2))
+  // The players take the seats around the round table in order; whoever finds no free seat drinks instead.
+  const seated = Math.min(players.length, seatCount)
+  for (let seat = 0; seat < seated; seat++) places.set(players[seat]!.id, { kind: 'jogos', seat })
+  taverna.push(...players.slice(seated))
   taverna.forEach((hero, index) => places.set(hero.id, { kind: 'taverna', index }))
 
   return places

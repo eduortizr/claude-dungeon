@@ -26,10 +26,12 @@ import { GUILD_MEMBERS, hashString, type ClassId } from '../../shared/guild'
 import type { Grid, Point } from './pathfinding'
 import { FLOOR, POTIONS, STAFFS, TILE } from './tiles'
 
+const BLEND = [FLOOR.blend0, FLOOR.blend1, FLOOR.blend2, FLOOR.blend3, FLOOR.blend4, FLOOR.blend5] as const
+
 export const ROOM_W = 11
 export const ROOM_H = 10
-/** A project room is an arena as wide as two guild rooms and the wall between them: space for a dozen fighters. */
-export const ARENA_W = ROOM_W * 2 + 1
+/** A project room is an arena wider than two guild rooms put together: space for dozens of fighters without a queue. */
+export const ARENA_W = ROOM_W * 2 + 7
 const CAVE_W = 16
 const CORRIDOR_H = 3
 const FOREST_H = 11
@@ -56,10 +58,10 @@ export const PROJECT_HOMES: ReadonlyMap<string, RoomKind> = new Map(
   GUILD_ROOMS.filter(r => r.project).map(r => [r.project!, r.kind]),
 )
 
-/** A game table in the sala de jogos: two players face each other across it. */
+/** The round table in the sala de jogos: the Mestre sits at its head, the players take the seats around it. */
 export interface GameTable {
   center: Point
-  seats: [Point, Point]
+  seats: Point[]
 }
 
 export type TargetKind = 'dummy' | 'archery' | 'daggers' | 'crystal' | 'orb'
@@ -89,14 +91,18 @@ export type PropKind =
   | 'lantern'
   | 'menu'
   // sala de jogos
-  | 'rpgtable'
-  | 'poster'
-  | 'dartboard'
-  | 'gameshelf'
+  | 'roundtable'
+  | 'dragonhead'
+  | 'griffonhead'
+  | 'basiliskhead'
+  | 'armorstand'
+  | 'wallarmor'
   | 'd20'
   // treino
   | TargetKind
   | 'runes'
+  | 'scratches'
+  | 'soot'
   // biblioteca
   | 'bookshelf'
   | 'readtable'
@@ -111,6 +117,9 @@ export type PropKind =
   | 'tradetable'
   | 'ticker'
   | 'scale'
+  | 'wallmap'
+  | 'wallchart'
+  | 'maptable'
   // decoration
   | 'torch'
   | 'spikes'
@@ -119,6 +128,7 @@ export type PropKind =
   | 'plant'
   | 'fern'
   | 'stage'
+  | 'lamppost'
 
 export interface Prop {
   kind: PropKind
@@ -136,6 +146,8 @@ export interface Resident {
   at: Point
   /** What they work on: the tile they lean toward. */
   workAt: Point
+  /** Places they walk to now and then (the merchant studies the charts), each with the tile they look at. */
+  stops?: { at: Point; facing: Point }[]
 }
 
 export type ForestActivity = 'pescar' | 'ervas' | 'descansar' | 'passear'
@@ -167,9 +179,9 @@ export interface RoomLayout {
   slots: Point[]
   tables: GameTable[]
   stations: Station[]
-  /** Where a guild member on its break stands (taverna, sala de jogos). */
+  /** Where a guild member on its break stands (taverna; in the sala de jogos, the last seats at the round table). */
   guests: Point[]
-  /** The tile guests face (the dartboard, the stage). */
+  /** The tile guests face (the round table, the stage). */
   guestFacing?: Point
 }
 
@@ -216,6 +228,11 @@ function rng(seed: number): () => number {
 function noise(x: number, y: number, k = 0): number {
   return (hashString(`${x},${y},${k}`) % 10_000) / 10_000
 }
+
+/** Seats around the sala de jogos' round table (room coordinates), spread out so a few players do not bunch up; the Mestre's seat is (5, 3). */
+const SEATS: readonly (readonly [number, number])[] = [
+  [7, 4], [3, 4], [7, 6], [3, 6], [5, 7], [4, 7], [6, 7], [4, 3], [6, 3], [3, 5], [7, 5],
+]
 
 /** Where each class trains: target and stand in room coordinates, and the kind of target. */
 const TRAINING: Record<(typeof GUILD_MEMBERS)[number], { target: [number, number]; stand: [number, number]; kind: TargetKind }> = {
@@ -326,6 +343,16 @@ export function buildMap(projects: readonly string[]): GameMap {
     }
   }
 
+  // Where the cave's dirt meets the corridor's sand, the edge fades: a few tiles that go from mostly dirt to mostly sand.
+  const lastDirt: number[] = []
+  for (let y = corridorY; y < corridorY + CORRIDOR_H; y++) {
+    let edge = Math.floor(caveCenter.x)
+    while (floor[at(edge + 1, y)] === TILE.dirt) edge++
+    lastDirt.push(edge)
+    BLEND.forEach((tile, step) => setFloor(edge - 2 + step, y, tile))
+  }
+  for (const dx of [-1, 1]) addProp('lamppost', { x: gate.x + dx, y: forestY + 1 }, true) // the way out to the forest
+
   // ---- the rooms ----
   const rooms: RoomLayout[] = []
   for (let i = 0; i < roomCount; i++) {
@@ -405,38 +432,42 @@ export function buildMap(projects: readonly string[]): GameMap {
       }
       // Spots two tiles apart come first, so a few drinkers' name tags don't overlap.
       room.slots = [P(2, 3), P(6, 3), P(2, 6), P(6, 6), P(8, 3), P(4, 6), P(4, 8), P(4, 3), P(3, 3)]
-      // The minstrel's little stage in the corner, and a plant in the other.
-      prop('stage', 8, 7, false)
-      residents.push({ id: 'menestrel', at: P(8, 7), workAt: P(7, 7) })
-      blocked[at(P(8, 7).x, P(8, 7).y)] = 1
+      // The minstrel's little stage against the back wall, and a plant in the other corner.
+      prop('stage', 8, 4, false)
+      residents.push({ id: 'menestrel', at: P(8, 4), workAt: P(7, 4) })
+      blocked[at(P(8, 4).x, P(8, 4).y)] = 1
       prop('plant', 1, 8, true)
       room.guests = [P(3, 8), P(7, 8)]
-      room.guestFacing = P(8, 7)
+      room.guestFacing = P(8, 4)
       for (const slot of room.slots.slice(0, 7)) setDeco(slot.x, slot.y, TILE.stool, false)
     } else if (kind === 'jogos') {
+      // Trophies on the back wall: a griffin, a dragon and a basilisk, between two suits of armor.
       deco(2, 0, TILE.banner)
-      prop('poster', 4, 0, true)
-      prop('gameshelf', 5, 0, true)
-      prop('dartboard', 6, 0, true)
       deco(8, 0, TILE.banner)
+      prop('wallarmor', 1, 0, true)
+      prop('griffonhead', 3, 0, true)
+      prop('dragonhead', 5, 0, true)
+      prop('basiliskhead', 7, 0, true)
+      prop('wallarmor', 9, 0, true, 1)
       deco(1, 1, TILE.chest)
       deco(9, 1, TILE.crate)
+      prop('armorstand', 1, 2, true)
+      prop('armorstand', 9, 2, true, 1)
       prop('d20', 1, 8, true)
       prop('d20', 9, 8, true, 1)
       prop('plant', 1, 4, true, 1)
       prop('plant', 9, 4, true)
-      // The Mestre do Claude runs the games from behind the tables, with his dragon.
-      residents.push({ id: 'mestre', at: P(5, 2), workAt: P(4, 2) })
-      blocked[at(P(5, 2).x, P(5, 2).y)] = 1
-      room.guests = [P(3, 2), P(7, 2)]
-      room.guestFacing = P(6, 0)
-      for (const [lx, ly] of [[7, 6], [3, 3], [7, 3], [3, 6]] as const) {
-        const center = P(lx, ly)
-        setDeco(center.x, center.y, TILE.table)
-        room.tables.push({ center, seats: [P(lx - 1, ly), P(lx + 1, ly)] })
-      }
-      // The first table (pairs sit there first) is a whole Masmorras & Dragões campaign: map, minis and the master's screen.
-      addProp('rpgtable', room.tables[0]!.center, true)
+      // One big round table (3x3 tiles). The Mestre do Claude sits at its head, with his dragon;
+      // everyone else sits around it. Heroes take the first seats, guild members the last ones.
+      const center = P(5, 5)
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) blocked[at(P(5 + dx, 5 + dy).x, P(5 + dx, 5 + dy).y)] = 1
+      addProp('roundtable', center, true)
+      residents.push({ id: 'mestre', at: P(5, 3), workAt: P(5, 4) })
+      blocked[at(P(5, 3).x, P(5, 3).y)] = 1
+      const seats = SEATS.map(([lx, ly]) => P(lx, ly))
+      room.tables.push({ center, seats })
+      room.guests = seats.slice(-2)
+      room.guestFacing = center
     } else if (kind === 'treino') {
       // A weapon rack and staffs on the back wall, a rune circle, one target per class.
       TILE.weapons.forEach((tile, k) => deco(1 + k * 2, 0, tile))
@@ -444,6 +475,11 @@ export function buildMap(projects: readonly string[]): GameMap {
       prop('runes', 8, 4, false)
       deco(1, 8, TILE.barrel)
       deco(9, 8, TILE.crate)
+      // Years of training: claw marks on the floor and walls, soot where the spells hit.
+      for (const [lx, ly, v] of [[3, 6, 0], [6, 7, 1], [1, 5, 2], [4, 5, 3], [7, 7, 0], [9, 6, 1]] as const) prop('scratches', lx, ly, false, v)
+      for (const [lx, ly, v] of [[4, 0, 4], [6, 0, 5], [0, 3, 6], [10, 6, 7], [0, 7, 6]] as const) prop('scratches', lx, ly, false, v)
+      for (const [lx, ly, v] of [[2, 2, 0], [1, 1, 1], [3, 1, 2], [8, 2, 0], [9, 1, 1], [7, 1, 2], [2, 3, 3], [8, 3, 3]] as const) prop('soot', lx, ly, false, v)
+      for (const lx of [2, 8]) prop('soot', lx, 0, false, 4)
       for (const cls of GUILD_MEMBERS) {
         const spot = TRAINING[cls]
         const target = P(...spot.target)
@@ -473,6 +509,12 @@ export function buildMap(projects: readonly string[]): GameMap {
       prop('ticker', 5, 0, true)
       deco(2, 0, TILE.banner)
       deco(8, 0, TILE.banner)
+      // Maps and charts on the walls, and a side table with a map spread out: the merchant studies them.
+      prop('wallmap', 1, 0, true)
+      prop('wallchart', 3, 0, true)
+      prop('wallchart', 7, 0, true, 1)
+      prop('wallmap', 9, 0, true, 1)
+      prop('maptable', 8, 7, true)
       prop('gold', 1, 1, true, 2)
       prop('gold', 9, 1, true, 2)
       prop('gold', 2, 1, true, 0)
@@ -483,11 +525,19 @@ export function buildMap(projects: readonly string[]): GameMap {
       deco(9, 6, TILE.mimic)
       deco(1, 6, TILE.chest)
       prop('scale', 8, 2, true)
-      for (const [lx, ly] of [[3, 2], [7, 7], [2, 7], [6, 1], [4, 8]] as const) prop('coins', lx, ly, false, lx)
+      for (const [lx, ly] of [[3, 2], [6, 7], [2, 7], [6, 1], [4, 8]] as const) prop('coins', lx, ly, false, lx)
       for (const lx of [4, 5, 6]) blocked[at(P(lx, 4).x, P(lx, 4).y)] = 1
       prop('tradetable', 5, 4, false)
-      residents.push({ id: 'mercador', at: P(5, 3), workAt: P(5, 4) })
-      blocked[at(P(5, 3).x, P(5, 3).y)] = 1
+      residents.push({
+        id: 'mercador',
+        at: P(5, 3),
+        workAt: P(5, 4),
+        stops: [
+          { at: P(3, 1), facing: P(3, 0) },
+          { at: P(7, 1), facing: P(7, 0) },
+          { at: P(7, 7), facing: P(8, 7) },
+        ],
+      })
       room.focus = P(5, 4)
       room.slots = [P(3, 4), P(7, 4), P(4, 5), P(6, 5), P(3, 6), P(7, 6)]
     } else {
@@ -502,9 +552,9 @@ export function buildMap(projects: readonly string[]): GameMap {
       } else {
         blocked[at(room.monster.x, room.monster.y)] = 1
         // Torches on the back wall, spikes and bones on the floor: decoration only, nothing blocks the way.
-        for (const d of [-8, -4, 4, 8]) prop('torch', cx + d, 0, false)
-        for (const d of [-6, -5, 5, 6]) prop('spikes', cx + d, 2, false, d)
-        for (const d of [-9, 9]) prop('spikes', cx + d, 8, false, d)
+        for (const d of [-10, -5, 5, 10]) prop('torch', cx + d, 0, false)
+        for (const d of [-7, -6, 6, 7]) prop('spikes', cx + d, 2, false, d)
+        for (const d of [-11, 11]) prop('spikes', cx + d, 8, false, d)
         // Cobwebs hang in the corners of the back wall (bit 0 = right, bit 1 = the wall is at the bottom).
         prop('cobweb', 1, 1, false, isTop ? 0 : 2)
         prop('cobweb', w - 2, 1, false, isTop ? 1 : 3)
@@ -514,9 +564,10 @@ export function buildMap(projects: readonly string[]): GameMap {
         // The fighters' spots: staggered rows, nearest the monster first, so a crowd
         // fans out around it and nobody shares a tile.
         const spots: { p: Point; d: number }[] = []
-        for (let ly = 4; ly <= 7; ly++) {
-          for (let d = -10; d <= 10; d++) {
+        for (let ly = 4; ly <= 8; ly++) {
+          for (let d = -(cx - 2); d <= cx - 2; d++) {
             if ((d + ly) % 2 !== 0) continue
+            if (ly === 8 && Math.abs(d) < 3) continue // keep the way from the door clear
             spots.push({ p: P(cx + d, ly), d: Math.hypot(d * 0.8, (ly - 3) * 1.6) })
           }
         }
@@ -524,6 +575,15 @@ export function buildMap(projects: readonly string[]): GameMap {
       }
     }
     rooms.push(room)
+  }
+
+  // Torches along the corridor, on the walls above and below it (never next to a door).
+  const torchFrom = Math.max(...lastDirt) + 3
+  for (let x = torchFrom, n = 0; x < cols - 2; x += 5, n++) {
+    for (const wallY of [corridorY - 1, corridorY + CORRIDOR_H]) {
+      const nearDoor = [-1, 0, 1].some(dx => floor[at(x + dx, wallY)] !== -1 && floor[at(x + dx, wallY)] !== TILE.wall)
+      if (!nearDoor && (n + (wallY === corridorY - 1 ? 0 : 1)) % 2 === 0) addProp('torch', { x, y: wallY }, false)
+    }
   }
 
   // ---- the forest, outside the gate ----

@@ -12,43 +12,47 @@
  * old mercador and the Mestre do Claude) never leave their rooms: they work all
  * day. Guild members not on a mission follow a routine (routine.ts): training,
  * the taverna, the sala de jogos, the forest, and back.
+ *
+ * The sala de jogos has one big round table: the Mestre do Claude sits at its
+ * head and whoever is idle (heroes and members on their break) sits around it
+ * to play Masmorras & Dragões with him. Whoever just struck, rolled or spoke is
+ * highlighted for a moment (Actor.spot). At night (daylight.ts) a dark blue
+ * veil covers the map and the light sources punch warm holes in it.
  */
 import { GUILD, hashString, type ClassId } from '../../shared/guild'
 import type { Hero, MarketFeed, WorldState } from '../../shared/types'
-import type { Camera } from './camera'
+import type { Area, Camera } from './camera'
 import { CUSTOM_SPRITES, drawSprite } from './characters'
 import { Actor, type Effect, Monster, updateEffects } from './entities'
+import { nightLevel } from './daylight'
 import {
   CONVERSATIONS,
   FOREST_LINES,
-  GAME_NAMES,
   GUILD_BANTER,
   MASTER_CHATS,
   MASTER_OPENERS,
+  MERCHANT_STUDY,
   RESIDENT_LINES,
-  TABLE_GAMES,
+  TABLE_ARRIVALS,
   TAVERN_TALK,
-  cardFace,
   oneOf,
   playRound,
   rpgLines,
   rpgScene,
-  taunt,
   type Round,
 } from './games'
 import { buildMap, ROOM_H, type GameMap, type ResidentId, type RoomLayout } from './map'
 import type { Point } from './pathfinding'
-import { placeHeroes, victoryLine, type Place } from './placement'
+import { activeProjects, placeHeroes, victoryLine, type Place } from './placement'
 import { GROUND_PROPS, TARGETS, drawDragon, drawProp } from './props'
 import { guildActivity, type Activity } from './routine'
 import { WALKERS, drawDuck, drawFish, drawWalker, duckAt, fishAt, walkerAt } from './wildlife'
-import { FLOOR, MONSTERS, TILE_SIZE, drawTile, isDrawnFloor } from './tiles'
+import { BLEND_SAND, FLOOR, MONSTERS, TILE, TILE_SIZE, drawTile, isDrawnFloor } from './tiles'
 
 const T = TILE_SIZE
 const VOID = '#2b2328'
 const BUBBLE_TIME = 5
-/** Seconds between rounds at a game table, and how long a result stays on the table. */
-const ROUND_EVERY = 4.5
+/** How long a d20 roll stays on the round table. */
 const RESULT_TIME = 2.2
 /** Seconds between the lines of a conversation. */
 const LINE_GAP = 2.6
@@ -69,13 +73,19 @@ const RESIDENTS: Record<ResidentId, { label: string; sprite: number; color: stri
   menestrel: { label: 'Menestrel', sprite: CUSTOM_SPRITES.menestrel, color: '#7fe0c8' },
 }
 
-interface TableState {
-  players: [string, string]
+/** The campaign at the round table: the Mestre's score against the players', and the last d20. */
+interface Campaign {
   score: [number, number]
-  nextRound: number
   last?: Round & { at: number }
-  /** Masmorras & Dragões: the master has described the scene; the roll comes at this time. */
-  rollAt?: number
+}
+
+/** A light on the map, in world pixels, for the night veil. */
+interface Light {
+  x: number
+  y: number
+  radius: number
+  /** 'r, g, b' of the warm glow added over the veil. */
+  color: string
 }
 
 interface Line {
@@ -103,7 +113,12 @@ export class Scene {
   /** Members whose mission ended before we ever drew them: never shown. */
   private finished = new Set<string>()
   private places = new Map<string, Place>()
-  private tables = new Map<number, TableState>()
+  private campaignState: Campaign = { score: [0, 0] }
+  /** The old merchant: at his table (stop -1) or studying a chart or a map. */
+  private merchant = { stop: -1, next: 8, moving: false, visits: 0 }
+  private nightLayer?: HTMLCanvasElement
+  private lights: Light[] = []
+  private lightsFor?: GameMap
   /** When each training target was (or will be, for a projectile in flight) last hit, by tile index. */
   private targetHits = new Map<number, number>()
   private nextDrill = new Map<string, number>()
@@ -125,7 +140,7 @@ export class Scene {
   private shakeUntil = new Map<string, number>()
   private nextNote = 2
   private nextMasterChat = 20
-  private nextCampaign = 35
+  private nextCampaign = 8
   /** D&D rolls the master has announced: the player rolls at `at`. */
   private rolls: { at: number; playerId: string }[] = []
 
@@ -139,6 +154,15 @@ export class Scene {
 
   get worldSize(): { width: number; height: number } {
     return { width: this.map.cols * T, height: this.map.rows * T }
+  }
+
+  /** Where the action is: the most recent project's arena (undefined when no one is fighting). */
+  get actionArea(): Area | undefined {
+    for (let i = this.projects.length - 1; i >= 0; i--) {
+      const room = this.map.rooms.find(r => r.kind === 'project' && r.name === this.projects[i])
+      if (room) return { x: room.x * T, y: room.y * T, width: room.w * T, height: ROOM_H * T }
+    }
+    return undefined
   }
 
   get selectedHeroId(): string | undefined {
@@ -178,7 +202,8 @@ export class Scene {
     }
 
     const jogos = this.map.room('jogos')
-    this.places = placeHeroes(heroes, now, jogos.tables.length)
+    // The members' seats are the last ones at the round table: heroes may fill every seat before them.
+    this.places = placeHeroes(heroes, now, jogos.tables[0]!.seats.length - jogos.guests.length)
     const inRoom = new Map<string, Actor[]>()
     const enter = (room: string, actor: Actor) => inRoom.set(room, [...(inRoom.get(room) ?? []), actor])
     const members: (() => void)[] = []
@@ -210,7 +235,7 @@ export class Scene {
       })
     }
     this.syncMonsters(inRoom)
-    this.syncTables()
+    if (![...this.places.values()].some(p => p.kind === 'jogos')) this.campaignState = { score: [0, 0] }
     if (!this.hasSettled && heroes.length > 0) {
       this.hasSettled = true
       for (const actor of this.actors.values()) {
@@ -242,17 +267,11 @@ export class Scene {
         break
       }
       case 'jogos': {
-        const table = this.map.room('jogos').tables[place.table]!
-        actor.goTo(this.map, table.seats[place.side], force)
-        actor.restFacingLeft = place.side === 1
-        if (arrived && place.side === 0) {
-          const rival = this.world.heroes[place.rival]?.name ?? 'você'
-          const game = TABLE_GAMES[place.table] ?? 'dados'
-          actor.bubble = {
-            text: game === 'rpg' ? `Eu mestro hoje! Senta aí, ${rival}.` : `Bora uma partida de ${GAME_NAMES[game].toLowerCase()}, ${rival}?`,
-            until: this.time + 4,
-          }
-        }
+        const table = this.map.room('jogos').tables[0]!
+        const seat = table.seats[place.seat % table.seats.length]!
+        actor.goTo(this.map, seat, force)
+        actor.restFacingLeft = table.center.x < seat.x
+        if (arrived) actor.bubble = { text: oneOf(TABLE_ARRIVALS), until: this.time + 4 }
         break
       }
       case 'floresta': {
@@ -302,7 +321,7 @@ export class Scene {
   }
 
   private syncRooms(heroes: Hero[]): boolean {
-    const active = new Set(heroes.filter(h => h.status !== 'offline').map(h => h.room))
+    const active = activeProjects(heroes)
     const next = [...this.projects.filter(p => active.has(p)), ...[...active].filter(p => !this.projects.includes(p))]
     if (next.join('\n') === this.projects.join('\n')) return false
     this.projects = next
@@ -386,9 +405,11 @@ export class Scene {
       actor.residentId = resident.id
       actor.x = resident.at.x
       actor.y = resident.at.y
+      actor.goTo(this.map, resident.at, true) // drops a walk left over from before the map changed
       actor.restFacingLeft = resident.workAt.x < resident.at.x
       this.actors.set(key, actor)
     }
+    this.merchant = { stop: -1, next: this.time + 8, moving: false, visits: 0 }
   }
 
   private station(cls: ClassId) {
@@ -438,20 +459,6 @@ export class Scene {
     }
   }
 
-  /** Keeps one score per pair at each table; a new pair starts from 0 x 0. */
-  private syncTables(): void {
-    const seated = new Map<number, [string, string]>()
-    for (const [heroId, place] of this.places) {
-      if (place.kind === 'jogos' && place.side === 0) seated.set(place.table, [heroId, place.rival])
-    }
-    for (const table of [...this.tables.keys()]) if (!seated.has(table)) this.tables.delete(table)
-    for (const [table, players] of seated) {
-      const current = this.tables.get(table)
-      if (current && current.players[0] === players[0] && current.players[1] === players[1]) continue
-      this.tables.set(table, { players, score: [0, 0], nextRound: this.time + ROUND_EVERY })
-    }
-  }
-
   private monsterLook(room: string, generation: number): number {
     return MONSTERS[hashString(`${room}#${generation}`) % MONSTERS.length]!
   }
@@ -472,6 +479,7 @@ export class Scene {
     }
     if (!monster.isAlive) return
     actor.attack(monster.at)
+    actor.act(true)
     monster.flash = 0.12
     monster.hp--
     const mx = monster.at.x + 0.5
@@ -569,6 +577,9 @@ export class Scene {
     this.time += dt
     for (const actor of this.actors.values()) {
       actor.update(dt)
+      // A new line (a bubble that was not up before) puts the speaker in the spotlight, unless it is an alert.
+      if (actor.bubble && actor.bubble !== actor.seenBubble && !actor.bubble.isAlert) actor.act()
+      actor.seenBubble = actor.bubble
       if (actor.isGone) this.actors.delete(actor.id)
     }
     for (const monster of this.monsters.values()) {
@@ -586,8 +597,8 @@ export class Scene {
     this.campaign()
 
     this.drill()
+    this.merchantWalk()
     this.residentsWork()
-    this.playTables()
     this.tavernTalk()
     this.banter()
     this.guildBanter()
@@ -663,9 +674,9 @@ export class Scene {
   }
 
   /**
-   * Now and then the Mestre runs a session of Masmorras & Dragões for up to
-   * three idle people in the sala de jogos: he opens, sets a scene, and each
-   * player rolls a d20 (with the master's comeback), reusing the games' lines.
+   * The Mestre runs Masmorras & Dragões for whoever sits at his round table:
+   * he opens, sets a scene for each player in turn, and the player rolls a d20
+   * (with the master's comeback). The roll shows on the table, with the score.
    */
   private campaign(): void {
     for (const roll of [...this.rolls]) {
@@ -677,7 +688,10 @@ export class Scene {
       const round = playRound('rpg')
       const { player: line, master: comeback } = rpgLines(round)
       const natural = round.values[1]
+      this.campaignState.last = { ...round, at: this.time }
+      this.campaignState.score[round.winner]++
       player.attack(master.tile)
+      player.act()
       player.bubble = { text: line, until: this.time + 3 }
       this.effects.push({
         kind: 'damage',
@@ -692,10 +706,12 @@ export class Scene {
       this.say(master, comeback, this.time + 2.2, 2.8)
     }
     if (this.time < this.nextCampaign) return
-    this.nextCampaign = this.time + 55 + Math.random() * 40
     const master = this.actors.get('resident/mestre')
-    const players = this.idleAt('jogos').filter(a => !a.residentId).slice(0, 3)
-    if (!master || players.length === 0) return
+    const players = this.idleAt('jogos').filter(a => !a.residentId).slice(0, 4)
+    if (!master || players.length === 0) {
+      this.nextCampaign = this.time + 4
+      return
+    }
     let at = this.time
     this.say(master, oneOf(MASTER_OPENERS), at, 3)
     for (const player of players) {
@@ -704,6 +720,7 @@ export class Scene {
       this.rolls.push({ at: at + 2.4, playerId: player.id })
       at += 2.6
     }
+    this.nextCampaign = at + 8 + Math.random() * 6
     this.nextMasterChat = Math.max(this.nextMasterChat, at + 6)
   }
 
@@ -717,10 +734,6 @@ export class Scene {
       if (!actor) continue
       actor.isHidden = away.has(station.cls)
       if (actor.isHidden || actor.isMoving) continue
-      if (actor.place === 'jogos') {
-        this.throwDarts(actor)
-        continue
-      }
       if (actor.place !== 'treino') continue
       const key = actor.id
       const next = this.nextDrill.get(key) ?? this.time + Math.random() * 2
@@ -730,6 +743,7 @@ export class Scene {
       }
       this.nextDrill.set(key, this.time + 1.4 + Math.random() * 2)
       actor.attack(station.target)
+      actor.act(true)
       const tileIndex = station.target.y * this.map.cols + station.target.x
       if (station.kind === 'dummy') {
         this.targetHits.set(tileIndex, this.time)
@@ -753,18 +767,38 @@ export class Scene {
     }
   }
 
-  /** A member on its break in the sala de jogos throws darts at the board now and then. */
-  private throwDarts(actor: Actor): void {
-    const board = this.map.room('jogos').guestFacing
-    if (!board) return
-    const next = this.nextDrill.get(actor.id) ?? this.time + Math.random() * 2
-    if (this.time < next) {
-      this.nextDrill.set(actor.id, next)
+  /**
+   * The old merchant keeps working, but not only at his table: now and then he
+   * walks to a wall chart or the map table, studies it for a while and comes back.
+   */
+  private merchantWalk(): void {
+    const resident = this.map.residents.find(r => r.id === 'mercador')
+    const actor = this.actors.get('resident/mercador')
+    const stops = resident?.stops
+    if (!resident || !actor || !stops?.length) return
+    const m = this.merchant
+    if (actor.isMoving) {
+      m.moving = true
       return
     }
-    this.nextDrill.set(actor.id, this.time + 2.2 + Math.random() * 2.5)
-    actor.attack(board)
-    this.effects.push({ kind: 'bolt', shape: 'dagger', x: actor.x + 0.5, y: actor.y + 0.4, tx: board.x + 0.5, ty: board.y + 0.7, age: 0, ttl: 0.25 })
+    if (m.moving) {
+      // Arrived: at a stop he studies the chart for a while, at the table he writes for longer.
+      m.moving = false
+      m.next = this.time + (m.stop >= 0 ? 5 + Math.random() * 3 : 9 + Math.random() * 6)
+      if (m.stop >= 0 && !(actor.bubble && actor.bubble.until > this.time)) actor.bubble = { text: oneOf(MERCHANT_STUDY), until: this.time + 5 }
+      return
+    }
+    if (this.time < m.next) return
+    if (m.stop < 0) {
+      m.stop = m.visits++ % stops.length
+      const stop = stops[m.stop]!
+      actor.goTo(this.map, stop.at)
+      actor.restFacingLeft = stop.facing.x < stop.at.x
+    } else {
+      m.stop = -1
+      actor.goTo(this.map, resident.at)
+      actor.restFacingLeft = resident.workAt.x < resident.at.x
+    }
   }
 
   /** The residents never stop: a stroke of work every couple of seconds, and a line now and then. */
@@ -777,8 +811,13 @@ export class Scene {
       if (this.time >= next) {
         const pause = resident.id === 'mercador' ? (busy ? 0.5 : 1.1) : resident.id === 'mestre' ? 3.8 : resident.id === 'menestrel' ? 5 : 2.6
         this.nextWork.set(resident.id, this.time + pause + Math.random() * pause)
-        if (resident.id === 'mercador') this.work(actor, resident.workAt, 'coin')
-        else if (resident.id === 'alquimista' || resident.id === 'mestre') this.work(actor, resident.workAt, 'spark')
+        if (resident.id === 'mercador') {
+          // Away from the table he leans toward the chart he is studying; no coins there.
+          const stop = this.merchant.stop >= 0 ? resident.stops?.[this.merchant.stop] : undefined
+          if (actor.isMoving) this.nextWork.set(resident.id, this.time + 0.5)
+          else if (stop) actor.attack(stop.facing)
+          else this.work(actor, resident.workAt, 'coin')
+        } else if (resident.id === 'alquimista' || resident.id === 'mestre') this.work(actor, resident.workAt, 'spark')
         else if (resident.id === 'taverneiro') actor.attack(resident.workAt)
       } else {
         this.nextWork.set(resident.id, next)
@@ -806,57 +845,6 @@ export class Scene {
       }
     }
     return oneOf(RESIDENT_LINES[id])
-  }
-
-  /** Sala de jogos: each occupied table plays a round every few seconds. */
-  private playTables(): void {
-    const jogos = this.map.room('jogos')
-    for (const [index, table] of this.tables) {
-      const players = table.players.map(id => this.actors.get(id))
-      const [a, b] = players
-      if (!a || !b || a.isMoving || b.isMoving) continue
-      const game = TABLE_GAMES[index] ?? 'dados'
-      const center = jogos.tables[index]!.center
-
-      if (game === 'rpg') {
-        // The master (side 0) describes the scene; a moment later the player rolls the d20.
-        if (table.rollAt === undefined && this.time >= table.nextRound) {
-          a.bubble = { text: rpgScene(), until: this.time + 3 }
-          table.rollAt = this.time + 2.2
-        } else if (table.rollAt !== undefined && this.time >= table.rollAt) {
-          table.rollAt = undefined
-          table.nextRound = this.time + ROUND_EVERY + 2 + Math.random() * 2
-          const round = playRound('rpg')
-          table.last = { ...round, at: this.time }
-          table.score[round.winner]++
-          const { player, master } = rpgLines(round)
-          b.attack(center)
-          b.bubble = { text: player, until: this.time + 3 }
-          this.say(a, master, this.time + 2.4, 3)
-        }
-        continue
-      }
-
-      if (this.time < table.nextRound) continue
-      table.nextRound = this.time + ROUND_EVERY + Math.random() * 2
-      const round = playRound(game)
-      table.last = { ...round, at: this.time }
-      table.score[round.winner]++
-
-      const winner = players[round.winner]!
-      const loser = players[1 - round.winner]!
-      if (round.game === 'braco') {
-        winner.attack(center)
-        loser.attack(center)
-      }
-      const vars = {
-        winner: winner.label,
-        loser: loser.label,
-        hits: this.world.heroes[winner.heroId]?.hits ?? 0,
-      }
-      winner.bubble = { text: taunt('win', vars), until: this.time + 3 }
-      loser.bubble = { text: taunt('lose', vars), until: this.time + 3 }
-    }
   }
 
   private tavernTalk(): void {
@@ -983,6 +971,7 @@ export class Scene {
     this.drawPet(ctx)
     this.drawEffects(ctx)
     this.drawWildlife(ctx)
+    this.drawNight(ctx, camera, width, height)
 
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     this.drawLabels(ctx, camera)
@@ -1100,6 +1089,18 @@ export class Scene {
       ctx.fillRect(px + ((x * 5 + y * 3) % 12) + 2, py, 1, T)
       ctx.fillStyle = '#7d5636'
       ctx.fillRect(px + Math.floor(n(3) * 12), py + Math.floor(n(4) * 4) * 4, 3, 1)
+    } else if (tile >= FLOOR.blend0 && tile <= FLOOR.blend5) {
+      // Dirt turning into sand: the cave's floor fades into the corridor in 2x2 pixel specks.
+      const sand = BLEND_SAND[tile - FLOOR.blend0]!
+      drawTile(ctx, this.sheet, sand > 0.5 ? TILE.sand : TILE.dirt, px, py)
+      const other = sand > 0.5 ? TILE.dirt : TILE.sand
+      const share = sand > 0.5 ? 1 - sand : sand
+      for (let cy = 0; cy < 8; cy++) {
+        for (let cx = 0; cx < 8; cx++) {
+          if (n(cy * 8 + cx + 80) >= share) continue
+          ctx.drawImage(this.sheet, (other % 12) * T + cx * 2, Math.floor(other / 12) * T + cy * 2, 2, 2, px + cx * 2, py + cy * 2, 2, 2)
+        }
+      }
     } else if (tile === FLOOR.rock) {
       this.drawRock(ctx, x, y, n)
     } else if (tile === FLOOR.gold) {
@@ -1334,6 +1335,7 @@ export class Scene {
             ctx.ellipse(actor.x * T + 8, actor.y * T + 15, 7, 3, 0, 0, Math.PI * 2)
             ctx.stroke()
           }
+          if (actor.spot > 0) this.drawSpotlight(ctx, actor, px, py)
           drawSprite(ctx, actor.hurt > 0 ? this.white : this.sheet, actor.sprite, px, py, T, actor.facingLeft)
         },
       })
@@ -1341,6 +1343,49 @@ export class Scene {
 
     list.sort((a, b) => a.y - b.y)
     for (const item of list) item.draw()
+  }
+
+  /** The color of whoever acts: the class's, or gold for a hero. */
+  private spotColor(actor: Actor): string {
+    return actor.heroId && !actor.isMember ? '#ffd34d' : actor.color
+  }
+
+  /** A pulsing ring and glow at the feet of whoever just acted, and an arrow over the one who struck. */
+  private drawSpotlight(ctx: CanvasRenderingContext2D, actor: Actor, px: number, py: number): void {
+    const color = this.spotColor(actor)
+    const fade = Math.min(1, actor.spot / 0.25)
+    const pulse = 1 + Math.sin(this.time * 22) * 0.12
+    ctx.save()
+    ctx.globalAlpha = fade
+    ctx.globalCompositeOperation = 'lighter'
+    const glow = ctx.createRadialGradient(px + 8, py + 9, 1, px + 8, py + 9, 15)
+    glow.addColorStop(0, 'rgba(255, 255, 255, 0.35)')
+    glow.addColorStop(1, 'rgba(255, 255, 255, 0)')
+    ctx.fillStyle = glow
+    ctx.fillRect(px - 8, py - 6, 32, 30)
+    ctx.restore()
+    ctx.save()
+    ctx.globalAlpha = fade
+    ctx.strokeStyle = color
+    ctx.lineWidth = 1.5
+    ctx.beginPath()
+    ctx.ellipse(px + 8, py + 15, 8.5 * pulse, 3.6 * pulse, 0, 0, Math.PI * 2)
+    ctx.stroke()
+    if (actor.spotStrike) {
+      // A little arrow, bobbing, over the one who struck.
+      const bob = Math.round(Math.sin(this.time * 18) * 1.5)
+      const ay = py - 5 + bob
+      ctx.fillStyle = '#120d16'
+      ctx.fillRect(px + 5, ay - 1, 6, 1)
+      ctx.fillRect(px + 6, ay, 4, 1)
+      ctx.fillRect(px + 7, ay + 1, 2, 1)
+      ctx.fillRect(px + 7, ay + 2, 2, 1)
+      ctx.fillStyle = color
+      ctx.fillRect(px + 6, ay - 1, 4, 1)
+      ctx.fillRect(px + 7, ay, 2, 1)
+      ctx.fillRect(px + 7, ay + 1, 2, 1)
+    }
+    ctx.restore()
   }
 
   private shadow(ctx: CanvasRenderingContext2D, px: number, py: number): void {
@@ -1483,6 +1528,83 @@ export class Scene {
     }
   }
 
+  /** The map's light sources, in world pixels: torches, lamps, fires and the glowing rooms. */
+  private findLights(): Light[] {
+    const lights: Light[] = []
+    const warm = '255, 170, 70'
+    for (const prop of this.map.props) {
+      const x = prop.x * T + 8
+      const y = prop.y * T
+      if (prop.kind === 'torch') lights.push({ x, y: y + 4, radius: 46, color: warm })
+      else if (prop.kind === 'lamppost') lights.push({ x, y: y - 7, radius: 56, color: '255, 205, 100' })
+      else if (prop.kind === 'lantern') lights.push({ x, y: y + 10, radius: 40, color: '255, 200, 90' })
+      else if (prop.kind === 'fireplace') lights.push({ x, y: y + 12, radius: 58, color: warm })
+      else if (prop.kind === 'cauldron') lights.push({ x, y: y + 6, radius: 34, color: '110, 230, 150' })
+      else if (prop.kind === 'crystal') lights.push({ x, y: y + 6, radius: 30, color: '95, 201, 255' })
+      else if (prop.kind === 'orb') lights.push({ x, y: y + 6, radius: 30, color: '255, 211, 77' })
+      else if (prop.kind === 'ticker') lights.push({ x, y: y + 8, radius: 34, color: '95, 211, 141' })
+      else if (prop.kind === 'roundtable') lights.push({ x, y: y + 9, radius: 70, color: '255, 190, 90' })
+      else if (prop.kind === 'stage') lights.push({ x: x + 8, y: y + 12, radius: 44, color: '255, 210, 120' })
+    }
+    lights.push({ x: (this.map.fire.x + 0.5) * T, y: (this.map.fire.y + 0.5) * T, radius: 120, color: warm })
+    for (const room of this.map.rooms) {
+      if (room.kind === 'tesouro') lights.push({ x: (room.x + room.w / 2) * T, y: (room.y + ROOM_H / 2) * T, radius: 90, color: '255, 200, 80' })
+    }
+    return lights
+  }
+
+  /**
+   * Night: a dark blue veil over the whole map, with warm holes where the lights
+   * are, so torches, fires and lamps stand out. The veil is drawn into its own
+   * canvas (the holes are cut with destination-out) and laid over the map.
+   */
+  private drawNight(ctx: CanvasRenderingContext2D, camera: Camera, width: number, height: number): void {
+    const level = nightLevel(new Date(Date.now()))
+    if (level < 0.01) return
+    if (this.lightsFor !== this.map) {
+      this.lights = this.findLights()
+      this.lightsFor = this.map
+    }
+    const w = this.map.cols * T
+    const h = this.map.rows * T
+    const canvas = this.nightLayer ?? (this.nightLayer = document.createElement('canvas'))
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w
+      canvas.height = h
+    }
+    const n = canvas.getContext('2d')!
+    const view = { left: camera.x, top: camera.y, right: camera.x + width / camera.zoom, bottom: camera.y + height / camera.zoom }
+    const visible = this.lights.filter(
+      l => l.x + l.radius > view.left && l.x - l.radius < view.right && l.y + l.radius > view.top && l.y - l.radius < view.bottom,
+    )
+    n.globalCompositeOperation = 'source-over'
+    n.clearRect(0, 0, w, h)
+    n.fillStyle = `rgba(9, 14, 46, ${0.68 * level})`
+    n.fillRect(0, 0, w, h)
+    n.globalCompositeOperation = 'destination-out'
+    for (const l of visible) {
+      const r = l.radius * (1 + Math.sin(this.time * 9 + l.x) * 0.03)
+      const hole = n.createRadialGradient(l.x, l.y, 2, l.x, l.y, r)
+      hole.addColorStop(0, `rgba(0, 0, 0, ${0.92 * level})`)
+      hole.addColorStop(0.55, `rgba(0, 0, 0, ${0.45 * level})`)
+      hole.addColorStop(1, 'rgba(0, 0, 0, 0)')
+      n.fillStyle = hole
+      n.fillRect(l.x - r, l.y - r, r * 2, r * 2)
+    }
+    ctx.drawImage(canvas, 0, 0)
+    ctx.save()
+    ctx.globalCompositeOperation = 'lighter'
+    for (const l of visible) {
+      const r = l.radius * 0.8
+      const glow = ctx.createRadialGradient(l.x, l.y, 1, l.x, l.y, r)
+      glow.addColorStop(0, `rgba(${l.color}, ${0.32 * level})`)
+      glow.addColorStop(1, `rgba(${l.color}, 0)`)
+      ctx.fillStyle = glow
+      ctx.fillRect(l.x - r, l.y - r, r * 2, r * 2)
+    }
+    ctx.restore()
+  }
+
   private drawLabels(ctx: CanvasRenderingContext2D, camera: Camera): void {
     const z = camera.zoom
     ctx.textBaseline = 'middle'
@@ -1515,13 +1637,19 @@ export class Scene {
       const feet = camera.toScreen((actor.x + 0.5) * T, (actor.y + 1) * T)
       ctx.font = `${actor.isMember ? 600 : 700} ${actor.isMember ? font - 1 : font}px "VT323", monospace`
       const width = ctx.measureText(actor.label).width + 16
-      ctx.fillStyle = 'rgba(18, 13, 22, 0.78)'
+      const lit = actor.spot > 0
+      if (lit) {
+        // Whoever just acted: the tag lights up in their color.
+        ctx.fillStyle = this.spotColor(actor)
+        this.roundRect(ctx, feet.x - width / 2 - 2, feet.y - 1, width + 4, font + 10, 5)
+      }
+      ctx.fillStyle = lit ? 'rgba(255, 255, 255, 0.92)' : 'rgba(18, 13, 22, 0.78)'
       this.roundRect(ctx, feet.x - width / 2, feet.y + 1, width, font + 6, 4)
       ctx.fillStyle = actor.color
       ctx.beginPath()
       ctx.arc(feet.x - width / 2 + 7, feet.y + 4 + font / 2, 3, 0, Math.PI * 2)
       ctx.fill()
-      ctx.fillStyle = '#fff'
+      ctx.fillStyle = lit ? '#120d16' : '#fff'
       ctx.fillText(actor.label, feet.x + 4, feet.y + 4 + font / 2)
     }
 
@@ -1573,42 +1701,18 @@ export class Scene {
     }
   }
 
-  /** Over each game table: the last round's dice, cards or d20 for a moment, then the score. */
+  /** Over the round table: the last d20 for a moment (with the difficulty), then the score of the campaign. */
   private drawTableResults(ctx: CanvasRenderingContext2D, camera: Camera): void {
     const z = camera.zoom
     const font = Math.max(14, Math.min(19, z * 5))
-    const tables = this.map.room('jogos').tables
-    for (const [index, table] of this.tables) {
-      const spot = tables[index]
-      if (!spot) continue
-      const p = camera.toScreen((spot.center.x + 0.5) * T, spot.center.y * T)
-      const fresh = table.last && this.time - table.last.at < RESULT_TIME ? table.last : undefined
-      if (fresh?.game === 'rpg') {
-        // Beside the master, at the table's height: above it the players' bubbles would cover the roll.
-        const side = camera.toScreen((spot.center.x - 1.9) * T, (spot.center.y + 0.5) * T)
-        this.drawD20(ctx, side.x - font * 1.6, side.y, font, fresh.values[1], fresh.values[0])
-      } else if (fresh && fresh.game !== 'braco') {
-        const faces = fresh.values.map(v => (fresh.game === 'cartas' ? cardFace(v) : String(v)))
-        const size = font + 8
-        faces.forEach((face, side) => {
-          const x = p.x + (side === 0 ? -size * 0.7 : size * 0.7)
-          const isWinner = side === fresh.winner
-          ctx.fillStyle = fresh.game === 'cartas' ? '#fdf7ea' : '#ffffff'
-          ctx.strokeStyle = isWinner ? '#ffd34d' : '#2b1d2e'
-          ctx.lineWidth = 2
-          const w = fresh.game === 'cartas' ? size * 0.75 : size
-          ctx.beginPath()
-          ctx.roundRect(x - w / 2, p.y - size - 4, w, size, 4)
-          ctx.fill()
-          ctx.stroke()
-          ctx.fillStyle = fresh.game === 'cartas' && side === 1 ? '#c0392b' : '#2b1d2e'
-          ctx.font = `700 ${font}px "VT323", monospace`
-          ctx.fillText(face, x, p.y - size / 2 - 3)
-        })
-      } else {
-        const score = TABLE_GAMES[index] === 'rpg' ? `Mestre ${table.score[0]} × ${table.score[1]} Grupo` : `${table.score[0]} × ${table.score[1]}`
-        this.pill(ctx, p.x, p.y - 10, score, '#ffd9a0', undefined, Math.max(2, z - 1))
-      }
+    const table = this.map.room('jogos').tables[0]
+    const { last, score } = this.campaignState
+    if (!table || !last) return
+    const p = camera.toScreen((table.center.x + 0.5) * T, (table.center.y + 0.5) * T)
+    if (this.time - last.at < RESULT_TIME) {
+      this.drawD20(ctx, p.x - font * 1.2, p.y, font * 1.25, last.values[1], last.values[0])
+    } else {
+      this.pill(ctx, p.x, p.y, `Mestre ${score[0]} × ${score[1]} Grupo`, '#ffd9a0', undefined, Math.max(2, z - 1))
     }
   }
 

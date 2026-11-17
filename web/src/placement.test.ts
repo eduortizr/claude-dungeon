@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Hero, HeroStatus, TimelineEntry } from '../../shared/types'
-import { CELEBRATE_MS, EXPLORE_MS, SLEEP_MS, placeHeroes, victoryLine } from './placement'
+import { CELEBRATE_MS, EXPLORE_MS, SLEEP_MS, activeProjects, placeHeroes, victoryLine } from './placement'
 
 const NOW = 10_000_000
 
@@ -31,7 +31,7 @@ describe('placeHeroes', () => {
     expect(places.get('c')).toEqual({ kind: 'project', room: 'blog', index: 0 })
   })
 
-  it('celebrates in the taverna, plays in pairs, walks in the floresta, then sleeps in the caverna', () => {
+  it('celebrates in the taverna, plays at the round table, walks in the floresta, then sleeps in the caverna', () => {
     const places = placeHeroes(
       [
         hero('a', 'idle', 1_000),
@@ -45,25 +45,40 @@ describe('placeHeroes', () => {
       4,
     )
     expect(places.get('a')).toEqual({ kind: 'taverna', index: 0 })
-    expect(places.get('b')).toEqual({ kind: 'jogos', table: 0, side: 0, rival: 'c' })
-    expect(places.get('c')).toEqual({ kind: 'jogos', table: 0, side: 1, rival: 'b' })
+    expect(places.get('b')).toEqual({ kind: 'jogos', seat: 0 })
+    expect(places.get('c')).toEqual({ kind: 'jogos', seat: 1 })
     expect(places.get('d')).toEqual({ kind: 'caverna', index: 0 })
     expect(places.get('e')).toEqual({ kind: 'floresta', index: 0 })
     expect(places.get('f')).toEqual({ kind: 'floresta', index: 1 })
   })
 
-  it('sends a player with no partner or no free table to the taverna', () => {
+  it('lets a lone player sit at the round table, and sends whoever finds no free seat to the taverna', () => {
     const lonely = placeHeroes([hero('a', 'idle', CELEBRATE_MS + 1)], NOW, 4)
-    expect(lonely.get('a')).toEqual({ kind: 'taverna', index: 0 })
+    expect(lonely.get('a')).toEqual({ kind: 'jogos', seat: 0 })
 
-    const crowded = placeHeroes(['a', 'b', 'c', 'd'].map(id => hero(id, 'idle', CELEBRATE_MS + 1)), NOW, 1)
-    expect(crowded.get('a')?.kind).toBe('jogos')
+    const crowded = placeHeroes(['a', 'b', 'c', 'd'].map(id => hero(id, 'idle', CELEBRATE_MS + 1)), NOW, 2)
+    expect(crowded.get('a')).toEqual({ kind: 'jogos', seat: 0 })
+    expect(crowded.get('b')).toEqual({ kind: 'jogos', seat: 1 })
     expect(crowded.get('c')).toEqual({ kind: 'taverna', index: 0 })
     expect(crowded.get('d')).toEqual({ kind: 'taverna', index: 1 })
   })
 
   it('sends offline heroes out', () => {
     expect(placeHeroes([hero('a', 'offline')], NOW, 4).get('a')).toEqual({ kind: 'gone' })
+  })
+})
+
+describe('activeProjects', () => {
+  it('has an arena only for projects with a fight going on', () => {
+    const heroes = [
+      hero('a', 'working', 0, { room: 'loja' }),
+      hero('b', 'waiting', 0, { room: 'blog' }),
+      hero('c', 'idle', 1_000, { room: 'recente', party: [{ id: 'x', cls: 'ladino', status: 'working', action: '', toolCalls: 1 }] as unknown as Hero['party'] }),
+      hero('f', 'idle', 1_000, { room: 'descansando' }),
+      hero('d', 'idle', CELEBRATE_MS + 1, { room: 'parado' }),
+      hero('e', 'offline', 0, { room: 'fora' }),
+    ]
+    expect([...activeProjects(heroes)].sort()).toEqual(['blog', 'loja', 'recente'])
   })
 })
 

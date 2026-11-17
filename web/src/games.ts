@@ -169,6 +169,23 @@ export const MASTER_OPENERS = [
   'Pergaminhos abertos, dados na mão! Vamos jogar.',
 ]
 
+/** What someone says when they sit down at the Mestre's round table. */
+export const TABLE_ARRIVALS = [
+  'Posso me sentar, mestre?',
+  'Qual é a campanha de hoje?',
+  'Já trouxe meu d20 da sorte!',
+  'Guardem um lugar pra mim!',
+]
+
+/** What the Velho Mercador mumbles while he studies a chart or a map away from his table. */
+export const MERCHANT_STUDY = [
+  'Hmm, a curva está subindo...',
+  'Esse gráfico não me engana.',
+  'Rota nova no mapa. Frete caro, margem boa.',
+  'Tendência de alta? Ou só otimismo?',
+  'Anotando... volto ao livro-caixa já já.',
+]
+
 export type ForestActivityName = 'pescar' | 'ervas' | 'descansar' | 'passear'
 
 export const FOREST_LINES: Record<ForestActivityName, readonly string[]> = {

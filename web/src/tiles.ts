@@ -42,7 +42,17 @@ export const FLOOR = {
   gold: 1004,
   /** Solid rock around and between everything: no black gaps on the map. */
   rock: 1005,
+  /** Where the cave's dirt meets the corridor's sand: six steps, from mostly dirt to mostly sand (see `BLEND_SAND`). */
+  blend0: 1006,
+  blend1: 1007,
+  blend2: 1008,
+  blend3: 1009,
+  blend4: 1010,
+  blend5: 1011,
 } as const
+
+/** The share of each blend tile that is sand, by step; the rest is dirt. */
+export const BLEND_SAND = [0.1, 0.28, 0.46, 0.64, 0.82, 0.94] as const
 
 export function isDrawnFloor(tile: number): boolean {
   return tile >= 1000
