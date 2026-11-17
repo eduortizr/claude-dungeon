@@ -105,6 +105,8 @@ export interface Hero {
   lastEventAt: number
   /** When the current working streak began, for "Em combate há 3 min". */
   workingSince?: number
+  /** Tool calls made before the current working streak, to count the streak's own. */
+  hitsAtStart?: number
   /** Bumped on every tool call, so the map can play an attack per call. */
   hits: number
   party: PartyMember[]
@@ -115,6 +117,27 @@ export interface Hero {
 export interface WorldState {
   heroes: Record<string, Hero>
   updatedAt: number
+  /** Every finished mission, oldest first. Heroes leave the map; their deeds stay here. */
+  chronicle?: MissionRecord[]
+}
+
+/** One finished mission, for the Crônicas: a subagent that came back, or a main session that finished a prompt. */
+export interface MissionRecord {
+  /** `<session>/<member>` for a subagent, `<session>#<n>` for a main session's prompt. */
+  id: string
+  cls: ClassId
+  /** The subagent type as called (`guild:ladino`, `Explore`, `ladino-pesquisador`); `mestre` for a main session. */
+  type: string
+  description: string
+  /** The project it worked in. */
+  project: string
+  /** The hero (main session) it worked for. */
+  hero: string
+  model: string | null
+  status: 'done' | 'failed'
+  startedAt: number
+  endedAt: number
+  toolCalls: number
 }
 
 /** One highlight from the market briefing: the headline, why it matters, and its tone. */

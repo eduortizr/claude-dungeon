@@ -2,6 +2,7 @@ import './style.css'
 import { GUILD, GUILD_MEMBERS, type ClassId } from '../../shared/guild'
 import type { WorldState } from '../../shared/types'
 import { Camera } from './camera'
+import { ChroniclePanel } from './chronicle'
 import { modelName } from './format'
 import { Panel } from './panel'
 import { Scene, type Selection } from './scene'
@@ -26,6 +27,14 @@ setSheet(sheet)
 const scene = new Scene(sheet, whiteSheet(sheet))
 const camera = new Camera()
 let world: WorldState = { heroes: {}, updatedAt: 0 }
+
+const chronicle = new ChroniclePanel(document.querySelector('#chronicle')!, () => chronicle.close())
+document.querySelector('#chronicle-open')!.addEventListener('click', () =>
+  chronicle.isOpen ? chronicle.close() : chronicle.open(world.chronicle ?? []),
+)
+window.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && chronicle.isOpen) chronicle.close()
+})
 
 const panel = new Panel(document.querySelector('#panel')!, () => select(undefined))
 document.querySelector('#panel')!.addEventListener('rerender', () => renderPanel())
@@ -113,6 +122,7 @@ connect(
     syncScene()
     renderSummary()
     renderPanel()
+    chronicle.render(world.chronicle ?? [], Date.now())
   },
   setConnection,
   feed => {

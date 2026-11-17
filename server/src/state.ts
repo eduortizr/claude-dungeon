@@ -4,11 +4,13 @@
  * panel show is derived here, so it is unit-tested in isolation.
  */
 import { GUILD, classOfAgentType, heroNameFor, heroSpriteFor } from '../../shared/guild'
-import type { Hero, HookEvent, PartyMember, TimelineEntry, TimelineKind, WorldState } from '../../shared/types'
+import type { Hero, HookEvent, MissionRecord, PartyMember, TimelineEntry, TimelineKind, WorldState } from '../../shared/types'
 import { describeTool, truncate } from './describe'
 
 export const TIMELINE_LIMIT = 100
 export const PARTY_LIMIT = 12
+/** Missions kept in the Crônicas (oldest dropped first). */
+export const CHRONICLE_LIMIT = 1000
 /** An offline hero leaves the map after this long. */
 export const OFFLINE_TTL_MS = 5 * 60_000
 /** A session that went quiet this long (killed without SessionEnd) is offline. */
@@ -18,7 +20,7 @@ const THINKING = 'Pensando…'
 const RESTING = 'Descansando na caverna'
 
 export function emptyWorld(): WorldState {
-  return { heroes: {}, updatedAt: 0 }
+  return { heroes: {}, updatedAt: 0, chronicle: [] }
 }
 
 export function roomOf(cwd: string | undefined): string {
@@ -56,7 +58,10 @@ function log(hero: Hero, ts: number, kind: TimelineKind, text: string, memberId?
 }
 
 function startWorking(hero: Hero, ts: number): void {
-  if (hero.status !== 'working') hero.workingSince = ts
+  if (hero.status !== 'working') {
+    hero.workingSince = ts
+    hero.hitsAtStart = hero.stats.toolCalls
+  }
   hero.status = 'working'
 }
 
@@ -252,10 +257,55 @@ export function reduce(state: WorldState, event: HookEvent): WorldState {
   hero.lastEventAt = Math.max(hero.lastEventAt, event.ts)
   applyEvent(hero, event)
 
+  const finished = finishedMissions(existing, hero, event)
+  const chronicle = finished.length ? [...(state.chronicle ?? []), ...finished].slice(-CHRONICLE_LIMIT) : state.chronicle
   return {
     heroes: { ...state.heroes, [hero.id]: hero },
     updatedAt: Math.max(state.updatedAt, event.ts),
+    chronicle,
   }
+}
+
+/**
+ * The missions this event finished, for the Crônicas: party members that were working
+ * before and are not anymore, and the main session's prompt when it stops.
+ */
+function finishedMissions(before: Hero | undefined, after: Hero, event: HookEvent): MissionRecord[] {
+  const records: MissionRecord[] = []
+  const wasWorking = new Set(before?.party.filter(m => m.status === 'working').map(m => m.id))
+  for (const member of after.party) {
+    if (member.status === 'working' || !wasWorking.has(member.id)) continue
+    records.push({
+      id: `${after.id}/${member.id}`,
+      cls: member.cls,
+      type: member.type,
+      description: member.description,
+      project: after.room,
+      hero: after.name,
+      model: member.model,
+      status: member.status,
+      startedAt: member.startedAt,
+      endedAt: member.endedAt ?? event.ts,
+      toolCalls: member.toolCalls,
+    })
+  }
+  if (event.event === 'Stop' && before?.workingSince !== undefined) {
+    const prompt = [...after.timeline].reverse().find(e => e.kind === 'prompt' && !e.memberId)
+    records.push({
+      id: `${after.id}#${after.stats.prompts}`,
+      cls: 'mestre',
+      type: 'mestre',
+      description: prompt?.text.replace(/^Nova missão: /, '').replace(/^"|"$/g, '') ?? 'Missão',
+      project: after.room,
+      hero: after.name,
+      model: after.model ?? null,
+      status: 'done',
+      startedAt: before.workingSince,
+      endedAt: event.ts,
+      toolCalls: after.stats.toolCalls - (before.hitsAtStart ?? 0),
+    })
+  }
+  return records
 }
 
 /** Drops heroes that left long ago and marks silent ones offline. */
@@ -275,5 +325,5 @@ export function prune(state: WorldState, now: number): WorldState {
     }
     heroes[hero.id] = hero
   }
-  return changed ? { heroes, updatedAt: now } : state
+  return changed ? { heroes, updatedAt: now, chronicle: state.chronicle } : state
 }

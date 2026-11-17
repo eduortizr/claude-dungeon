@@ -20,6 +20,7 @@ Veja suas sessões do [Claude Code](https://claude.com/claude-code) como uma gui
   | 💰 Câmara de ouro | sessões do projeto `Invest` | o Velho Mercador nunca para: lê em voz alta as notícias da bolsa de um briefing local (ver abaixo) |
 
 - Os heróis parados conversam entre si, e os membros da guilda também, entre um treino e outro.
+- **Crônicas** (botão no topo): o diário de cada classe, com toda missão concluída (o que fez, em que projeto, para qual herói, golpes, tempo, modelo) e estatísticas. O servidor guarda as missões mesmo depois que o herói sai do mapa. Agentes de um projeto com nome `<classe>-<papel>` (ex.: `ladino-pesquisador`) contam como aquela classe.
 - **Câmara de ouro e notícias:** o servidor lê `overlay_briefing.json` (e `overlay_status.json`, se houver) de uma pasta indicada em `CLAUDE_DUNGEON_MARKET_DIR` ou em `marketDir` num `config.json` ao lado do `world.json` (`data/` no modo dev, `%APPDATA%\Claude Dungeon\` no app). Só manchetes, títulos e tom vão para o mapa. Clicar no mercador mostra as notícias no painel. Os projetos de cada sala ficam em `GUILD_ROOMS` (`web/src/map.ts`).
 
 - Clicar num herói abre o **painel lateral**:

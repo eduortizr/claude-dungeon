@@ -160,3 +160,54 @@ describe('roomOf', () => {
     expect(roomOf(undefined)).toBe('Sem projeto')
   })
 })
+
+describe('chronicle', () => {
+  it('records a party member when it comes back, and keeps it after the hero is pruned', () => {
+    const state = run(
+      ev('UserPromptSubmit', { prompt: 'arruma o login' }),
+      ev('PreToolUse', {
+        tool_name: 'Agent',
+        tool_use_id: 'call-1',
+        tool_input: { subagent_type: 'ladino-pesquisador', description: 'pesquisar tardígrados' },
+      }),
+      ev('SubagentStart', { agent_id: 'agent-1', agent_type: 'ladino-pesquisador' }),
+      ev('PreToolUse', { agent_id: 'agent-1', tool_name: 'WebSearch', tool_input: { query: 'tardigrade' } }),
+      ev('SubagentStop', { agent_id: 'agent-1' }),
+    )
+    expect(state.chronicle).toEqual([
+      expect.objectContaining({
+        id: `${SESSION}/call-1`,
+        cls: 'ladino',
+        type: 'ladino-pesquisador',
+        description: 'pesquisar tardígrados',
+        project: 'loja-api',
+        status: 'done',
+        toolCalls: 1,
+      }),
+    ])
+
+    const gone = prune(reduce(state, ev('SessionEnd')), clock + OFFLINE_TTL_MS + 1)
+    expect(gone.heroes).toEqual({})
+    expect(gone.chronicle).toHaveLength(1) // SessionEnd is not a Stop: the unfinished prompt is not a mission
+  })
+
+  it('records the main session finishing a prompt, with the prompt and its own hits', () => {
+    const state = run(
+      ev('UserPromptSubmit', { prompt: 'primeira' }),
+      ev('PreToolUse', { tool_name: 'Read', tool_input: { file_path: 'a.ts' } }),
+      ev('Stop'),
+      ev('UserPromptSubmit', { prompt: 'arruma o login' }),
+      ev('PreToolUse', { tool_name: 'Read', tool_input: { file_path: 'a.ts' } }),
+      ev('PreToolUse', { tool_name: 'Edit', tool_input: { file_path: 'a.ts' } }),
+      ev('Stop'),
+    )
+    const last = state.chronicle?.at(-1)
+    expect(last).toMatchObject({ cls: 'mestre', type: 'mestre', status: 'done', toolCalls: 2 })
+    expect(last?.description).toContain('arruma o login')
+    expect(state.chronicle).toHaveLength(2)
+  })
+
+  it('does not record a Stop with no mission in progress', () => {
+    expect(run(ev('SessionStart'), ev('Stop')).chronicle).toEqual([])
+  })
+})

@@ -444,3 +444,224 @@ img {
   font-size: 15px;
   margin-top: 4px;
 }
+
+/* ---- Crônicas: every finished mission, one tab per class ---- */
+.topbar-button {
+  font: inherit;
+  font-size: 18px;
+  color: var(--gold);
+  background: var(--panel-2);
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  padding: 3px 12px;
+  cursor: pointer;
+}
+
+.topbar-button:hover {
+  border-color: var(--gold);
+}
+
+.chronicle {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(10, 7, 12, 0.72);
+}
+
+.chronicle[hidden] {
+  display: none;
+}
+
+.chronicle-card {
+  width: min(980px, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.chronicle-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 18px;
+  border-bottom: 2px solid var(--line);
+}
+
+.chronicle-head h2 {
+  margin: 0;
+  font-size: 26px;
+  color: var(--gold);
+}
+
+.chronicle-head .close {
+  margin-left: auto;
+}
+
+.chronicle-body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+}
+
+.chronicle-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  border-right: 2px solid var(--line);
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.chronicle-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: inherit;
+  font-size: 19px;
+  text-align: left;
+  color: var(--text);
+  background: transparent;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.chronicle-tab img {
+  image-rendering: pixelated;
+  width: 32px;
+  height: 32px;
+}
+
+.chronicle-tab .chip {
+  margin-left: auto;
+}
+
+.chronicle-tab:hover {
+  background: var(--panel-2);
+}
+
+.chronicle-tab.active {
+  background: var(--panel-2);
+  border-color: var(--gold);
+}
+
+.chronicle-page {
+  flex: 1;
+  min-width: 0;
+  padding: 14px 20px;
+  overflow-y: auto;
+}
+
+.chronicle-hero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.chronicle-hero h3 {
+  margin: 0;
+  font-size: 26px;
+}
+
+.chronicle-hero p {
+  margin: 2px 0 0;
+}
+
+.chronicle-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.chronicle-stats div {
+  background: var(--panel-2);
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+
+.chronicle-stats dt {
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.chronicle-stats dd {
+  margin: 0;
+  font-size: 22px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chronicle-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chronicle-list li {
+  padding: 8px 12px;
+  border-left: 3px solid var(--gold);
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 0 8px 8px 0;
+}
+
+.chronicle-list li.failed {
+  border-left-color: #e8462b;
+}
+
+.chronicle-list p {
+  margin: 0;
+}
+
+.chronicle-line {
+  font-size: 19px;
+}
+
+.chronicle-verb {
+  color: var(--gold);
+}
+
+.chronicle-list li.failed .chronicle-verb {
+  color: #ff6b5a;
+}
+
+.chronicle-list time {
+  float: right;
+}
+
+.chronicle-empty {
+  margin-top: 24px;
+  font-size: 19px;
+}
+
+@media (max-width: 720px) {
+  .chronicle-body {
+    flex-direction: column;
+  }
+
+  .chronicle-tabs {
+    flex-direction: row;
+    border-right: none;
+    border-bottom: 2px solid var(--line);
+    overflow-x: auto;
+  }
+
+  .chronicle-tab span:not(.chip) {
+    display: none;
+  }
+}
