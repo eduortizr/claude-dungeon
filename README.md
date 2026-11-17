@@ -2,7 +2,9 @@
 
 Veja suas sessões do [Claude Code](https://claude.com/claude-code) como uma guilda de RPG explorando uma dungeon em pixel art, ao vivo.
 
-![Mapa com a caverna, a taverna, a sala de jogos (com a mesa de Masmorras & Dragões), a sala de treinamento, a Biblioteca, a Câmara de ouro, as salas dos projetos e a floresta lá fora](docs/screenshot.png)
+![O mapa de dia: a taverna com o menestrel, a sala de treinamento, a Câmara de ouro, a sala de jogos com a mesa redonda do Mestre, a Biblioteca, as arenas dos projetos e a floresta lá fora](docs/screenshot.png)
+
+![O mesmo mapa depois das 18:30: tudo escurece e as tochas, a lareira e os lampiões iluminam as salas](docs/screenshot-noite.png)
 
 - Cada **sessão** do Claude é um **herói** com nome e visual próprios.
 - Cada **projeto** (a pasta onde a sessão roda) é uma **sala da dungeon**, com placa e contador de heróis.
