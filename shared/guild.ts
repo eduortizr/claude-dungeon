@@ -4,7 +4,7 @@
  * run without a build step); `shared/guild.test.ts` keeps both in sync.
  */
 
-export type ClassId = 'mestre' | 'mago' | 'guerreiro' | 'ladino' | 'clerigo' | 'bardo' | 'mercenario'
+export type ClassId = 'mestre' | 'mago' | 'guerreiro' | 'ladino' | 'clerigo' | 'bardo' | 'arquimago' | 'mercenario'
 
 export interface GuildClass {
   id: ClassId
@@ -12,7 +12,7 @@ export interface GuildClass {
   name: string
   role: string
   /** Model alias the class runs on; `null` = inherits the session's model. */
-  model: 'opus' | 'sonnet' | 'haiku' | null
+  model: 'fable' | 'opus' | 'sonnet' | 'haiku' | null
   /** Index of the class sprite in the Tiny Dungeon tilemap. */
   sprite: number
   /** Accent color used for name tags and the side panel. */
@@ -26,14 +26,18 @@ export const GUILD: Record<ClassId, GuildClass> = {
   ladino: { id: 'ladino', name: 'Ladino', role: 'Exploração e busca (só leitura)', model: 'haiku', sprite: 112, color: '#5fd38d' },
   clerigo: { id: 'clerigo', name: 'Clérigo', role: 'Revisão, testes e bugs', model: 'sonnet', sprite: 100, color: '#f2f2f2' },
   bardo: { id: 'bardo', name: 'Bardo', role: 'Documentação e textos', model: 'haiku', sprite: 99, color: '#ff8ad8' },
-  mercenario: { id: 'mercenario', name: 'Mercenário', role: 'Subagente de fora da guilda', model: null, sprite: 111, color: '#c9a36b' },
+  arquimago: { id: 'arquimago', name: 'Arquimago', role: 'Lendário: só para os problemas mais difíceis', model: 'fable', sprite: 111, color: '#ffd34d' },
+  mercenario: { id: 'mercenario', name: 'Mercenário', role: 'Subagente de fora da guilda', model: null, sprite: 109, color: '#c9a36b' },
 }
+
+/** The classes that live in the training room, in station order. */
+export const GUILD_MEMBERS = ['mago', 'guerreiro', 'ladino', 'clerigo', 'bardo', 'arquimago'] as const satisfies readonly ClassId[]
 
 /** Name of the Claude Code plugin; its agents are dispatched as `guild:<class>`. */
 export const PLUGIN_NAME = 'guild'
 
 /** Sprites a main session (a "Mestre") may wear, so several sessions look apart. */
-export const HERO_SPRITES = [87, 85, 86, 88, 97, 98, 109] as const
+export const HERO_SPRITES = [87, 85, 86, 88, 97, 98] as const
 
 export const HERO_NAMES = [
   'Aldric', 'Brienna', 'Caelum', 'Dagna', 'Eldor', 'Fenra', 'Gorim', 'Halvar',

@@ -24,6 +24,11 @@ describe('classify', () => {
     expect(classify({ description: 'xyz' })).toMatchObject({ classId: 'guerreiro', score: 0 })
   })
 
+  it('never escalates to the Arquimago on its own', () => {
+    const hard = 'Investigar bug muito difícil de arquitetura, revisar tudo, ninguém achou a causa'
+    expect(classify({ description: hard, prompt: hard }).classId).not.toBe('arquimago')
+  })
+
   it('explains its choice', () => {
     expect(classify({ description: 'Buscar onde fica o parser' }).reason).toContain('busc')
   })

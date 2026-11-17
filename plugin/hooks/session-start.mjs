@@ -7,10 +7,14 @@ import { readPayload, send, toEvent } from './lib.mjs'
 const payload = await readPayload()
 await send(toEvent(payload))
 
-const roster = CLASSES.map(c => `- ${PLUGIN_NAME}:${c.id} (${c.name}, ${c.model}): ${c.when}`).join('\n')
+const line = c => `- ${PLUGIN_NAME}:${c.id} (${c.name}, ${c.model}): ${c.when}`
+const roster = CLASSES.filter(c => !c.escalationOnly).map(line).join('\n')
+const legends = CLASSES.filter(c => c.escalationOnly).map(line).join('\n')
 
 const context = `Você é o Mestre da guilda (plugin "${PLUGIN_NAME}"). Quando uma tarefa tiver uma parte que se beneficia de um subagente, delegue com a ferramenta Agent para a classe certa, cada uma em um modelo escolhido para o tipo de trabalho:
 ${roster}
+Escalação (não use por padrão):
+${legends}
 Use subagent_type com o nome completo (ex.: ${PLUGIN_NAME}:ladino). Tarefas simples você resolve sozinho; não delegue só para delegar. Um Agent genérico (general-purpose) é redirecionado automaticamente por um roteador de palavras-chave.`
 
 process.stdout.write(
