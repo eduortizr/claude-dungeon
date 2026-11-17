@@ -116,3 +116,27 @@ export interface WorldState {
   heroes: Record<string, Hero>
   updatedAt: number
 }
+
+/** One highlight from the market briefing: the headline, why it matters, and its tone. */
+export interface MarketHighlight {
+  title: string
+  why: string
+  tone: 'positivo' | 'negativo' | 'neutro'
+}
+
+/**
+ * The market news the merchant in the Câmara de ouro reads out, taken from a
+ * local briefing file written by another agent (see server/src/market.ts).
+ * Only news goes here: nothing about anyone's portfolio.
+ */
+export interface MarketFeed {
+  /** Short one-line headlines. */
+  headlines: string[]
+  highlights: MarketHighlight[]
+  /** When the briefing was written, as the agent labeled it ("17/11 10:08"). */
+  updatedLabel: string
+  /** When the briefing was written, epoch ms. */
+  updatedAt: number
+  /** The briefing agent is running right now. */
+  busy: boolean
+}

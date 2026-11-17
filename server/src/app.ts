@@ -6,7 +6,8 @@
  *
  *   POST /events   one HookEvent (from plugin/hooks/emit.mjs)
  *   GET  /state    the whole WorldState
- *   GET  /stream   SSE: a `state` message on every change
+ *   GET  /market   the market feed for the Câmara de ouro (null without one)
+ *   GET  /stream   SSE: a `state` message on every change, a `market` one when the feed changes
  *   GET  /*        the built map, when `webDist` exists
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
@@ -14,7 +15,8 @@ import type { AddressInfo } from 'node:net'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { dirname, extname, normalize, resolve, sep } from 'node:path'
-import type { HookEvent, WorldState } from '../../shared/types'
+import type { HookEvent, MarketFeed, WorldState } from '../../shared/types'
+import { marketStamp, readMarketFeed } from './market'
 import { emptyWorld, prune, reduce } from './state'
 import { readTranscript } from './transcript'
 
@@ -25,6 +27,8 @@ export interface ServerOptions {
   dataFile: string
   /** The built map (web/dist) to serve at `/`. */
   webDist: string
+  /** Folder with the market briefing (see market.ts); optional. */
+  marketDir?: string
   host?: string
 }
 
@@ -34,6 +38,7 @@ export interface RunningServer {
 }
 
 const MAX_BODY = 1_000_000
+const MARKET_POLL_MS = 20_000
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -78,8 +83,10 @@ function send(res: ServerResponse, status: number, body: string, type = 'applica
  * Claude Dungeon already serves the port), so the caller can decide what to do.
  */
 export async function startServer(options: ServerOptions): Promise<RunningServer> {
-  const { port, dataFile, webDist, host = '127.0.0.1' } = options
+  const { port, dataFile, webDist, marketDir, host = '127.0.0.1' } = options
   let world: WorldState = emptyWorld()
+  let market: MarketFeed | undefined
+  let marketSeen = ''
   const clients = new Set<ServerResponse>()
 
   // ---- persistence ---------------------------------------------------------
@@ -112,6 +119,18 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
       for (const client of clients) client.write(message)
     }, 100)
   }
+
+  /** Reads the briefing again when its files changed, and tells the open maps. */
+  async function refreshMarket(): Promise<void> {
+    if (!marketDir) return
+    const stamp = await marketStamp(marketDir)
+    if (stamp === marketSeen) return
+    marketSeen = stamp
+    market = await readMarketFeed(marketDir)
+    const message = `event: market\ndata: ${JSON.stringify(market ?? null)}\n\n`
+    for (const client of clients) client.write(message)
+  }
+  await refreshMarket()
 
   function apply(event: HookEvent): void {
     world = reduce(world, event)
@@ -185,6 +204,11 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
       return
     }
 
+    if (req.method === 'GET' && url.pathname === '/market') {
+      send(res, 200, JSON.stringify(market ?? null))
+      return
+    }
+
     if (req.method === 'GET' && url.pathname === '/stream') {
       res.writeHead(200, {
         'Content-Type': 'text/event-stream',
@@ -193,6 +217,7 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
         'Access-Control-Allow-Origin': '*',
       })
       res.write(`event: state\ndata: ${JSON.stringify(world)}\n\n`)
+      res.write(`event: market\ndata: ${JSON.stringify(market ?? null)}\n\n`)
       clients.add(res)
       req.on('close', () => clients.delete(res))
       return
@@ -216,6 +241,7 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
     }
     for (const client of clients) client.write(': ping\n\n')
   }, 30_000)
+  const marketPoll = marketDir ? setInterval(() => void refreshMarket(), MARKET_POLL_MS) : undefined
 
   await new Promise<void>((resolveListen, reject) => {
     server.once('error', reject)
@@ -229,6 +255,7 @@ export async function startServer(options: ServerOptions): Promise<RunningServer
     url: `http://localhost:${(server.address() as AddressInfo).port}`,
     async close() {
       clearInterval(housekeeping)
+      clearInterval(marketPoll)
       clearTimeout(saveTimer)
       await save()
       for (const client of clients) client.end()

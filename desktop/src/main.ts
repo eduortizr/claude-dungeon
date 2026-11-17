@@ -9,6 +9,7 @@
 import { join } from 'node:path'
 import { BrowserWindow, Menu, Tray, app, nativeImage, shell } from 'electron'
 import { startServer, type RunningServer } from '../../server/src/app'
+import { resolveMarketDir } from '../../server/src/market'
 
 const PORT = Number(process.env.PORT ?? 4747)
 const MAP_URL = `http://127.0.0.1:${PORT}/`
@@ -31,7 +32,13 @@ function webDist(): string {
 
 async function startEmbeddedServer(): Promise<string | undefined> {
   try {
-    server = await startServer({ port: PORT, dataFile: join(app.getPath('userData'), 'world.json'), webDist: webDist() })
+    const dataDir = app.getPath('userData')
+    server = await startServer({
+      port: PORT,
+      dataFile: join(dataDir, 'world.json'),
+      webDist: webDist(),
+      marketDir: await resolveMarketDir(dataDir),
+    })
     return undefined
   } catch (error) {
     // Another Claude Dungeon (npm run dev, say) already serves the port: show its map.
