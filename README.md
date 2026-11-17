@@ -80,6 +80,10 @@ flowchart LR
 
 ## Instalar o app (Windows)
 
+Baixe o instalador na página de [Releases](https://github.com/eduortizr/claude-dungeon/releases/latest). Ele não tem assinatura digital, então o Windows mostra "Windows protegeu seu computador": clique em **Mais informações** e depois em **Executar assim mesmo**.
+
+Para gerar o instalador a partir do código:
+
 ```bash
 npm install
 npm run app:dist     # gera desktop/release/Claude-Dungeon-Setup-<versão>.exe
