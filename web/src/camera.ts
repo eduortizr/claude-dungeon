@@ -39,7 +39,11 @@ export class Camera {
    * brought into view instead of staying off-screen; if it all fits, nothing is lost.
    */
   fit(viewWidth: number, viewHeight: number, worldWidth: number, worldHeight: number, force = false, focus?: Area): void {
-    if (this.hasUserMoved && !force) return
+    if (this.hasUserMoved && !force) {
+      // The user's view stays, but a map that just got narrower must not leave it looking at nothing.
+      this.clamp(viewWidth, viewHeight, worldWidth, worldHeight)
+      return
+    }
     const fits = Math.floor(Math.min(viewWidth / worldWidth, viewHeight / worldHeight))
     this.zoom = Math.min(MAX_ZOOM, Math.max(2, fits))
     this.x = (worldWidth - viewWidth / this.zoom) / 2
@@ -50,6 +54,26 @@ export class Camera {
       this.x = reveal(this.x, viewWidth / this.zoom, focus.x, focus.x + focus.width, worldWidth)
       this.y = reveal(this.y, viewHeight / this.zoom, focus.y, focus.y + focus.height, worldHeight)
     }
+  }
+
+  /**
+   * The map changed while the app is open: the zoom stays as it is (it only changes in `fit`, on first
+   * layout and on resize) and only the position moves, to keep `focus` in sight and inside the edges.
+   * Once the user dragged, the view only gets clamped.
+   */
+  follow(viewWidth: number, viewHeight: number, worldWidth: number, worldHeight: number, focus?: Area): void {
+    if (focus && !this.hasUserMoved) {
+      this.x = reveal(this.x, viewWidth / this.zoom, focus.x, focus.x + focus.width, worldWidth)
+      this.y = reveal(this.y, viewHeight / this.zoom, focus.y, focus.y + focus.height, worldHeight)
+    }
+    this.clamp(viewWidth, viewHeight, worldWidth, worldHeight)
+  }
+
+  /** Keeps the view over the world: never scrolled past an edge, and centered on any axis where the world is smaller. */
+  clamp(viewWidth: number, viewHeight: number, worldWidth: number, worldHeight: number): void {
+    const fit = (start: number, view: number, world: number) => (world <= view ? (world - view) / 2 : Math.max(0, Math.min(world - view, start)))
+    this.x = fit(this.x, viewWidth / this.zoom, worldWidth)
+    this.y = fit(this.y, viewHeight / this.zoom, worldHeight)
   }
 
   toWorld(screenX: number, screenY: number): Point {

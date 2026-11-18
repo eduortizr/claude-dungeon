@@ -5,3 +5,6 @@ data/
 .env
 .DS_Store
 desktop/release/
+
+# local recordings (may show private paths or data)
+videoExemplo/

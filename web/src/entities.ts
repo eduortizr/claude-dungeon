@@ -54,6 +54,10 @@ export class Actor {
   spotStrike = false
   /** The bubble last seen, to notice a new line. */
   seenBubble?: Bubble
+  /** Level from `progression.ts`; 0 for those who have none (the residents). */
+  level = 0
+  /** The level last announced; 0 until the first one is known, so a new actor does not "level up". */
+  shownLevel = 0
   private path: Point[] = []
   private target?: Point
 
@@ -89,6 +93,14 @@ export class Actor {
     this.target = target
     // From the next tile on the way if mid-step, so the walk stays on the grid.
     this.path = findPath(map, this.tile, target) ?? []
+  }
+
+  /** Stands on `at` right away, forgetting any walk (the map changed under it). */
+  teleport(at: Point): void {
+    this.x = at.x
+    this.y = at.y
+    this.path = []
+    this.target = undefined
   }
 
   /** Skips the walk: stands at the current target right away (when the map first opens). */
@@ -232,10 +244,10 @@ export interface Effect {
    * slash/poof: a hit and a kill; damage/xp/z: floating text; bolt: a spell,
    * dagger or arrow flying from (x, y) to (tx, ty); coin/spark: work in the
    * Câmara de ouro and the Biblioteca; burst: a handful of pixels flying out
-   * of a hit (`color`); note: a musical note floating up from the minstrel
+   * of a hit (`color`); levelup: a column of light and "NÍVEL N!" (`text`); note: a musical note floating up from the minstrel
    * (`text` is its shape); splash: ripples where a fish jumped.
    */
-  kind: 'slash' | 'damage' | 'poof' | 'xp' | 'z' | 'bolt' | 'coin' | 'spark' | 'burst' | 'note' | 'splash'
+  kind: 'slash' | 'damage' | 'poof' | 'xp' | 'z' | 'bolt' | 'coin' | 'spark' | 'burst' | 'levelup' | 'note' | 'splash'
   x: number
   y: number
   tx?: number
@@ -246,6 +258,10 @@ export interface Effect {
   ttl: number
   text?: string
   color?: string
+  /** Size factor for hits (slash, burst, damage number): 1 is the base size, higher levels hit bigger. */
+  scale?: number
+  /** Floating text drawn with a dark outline (the CRÍTICO! call-out). */
+  outline?: boolean
 }
 
 export function updateEffects(effects: Effect[], dt: number): Effect[] {

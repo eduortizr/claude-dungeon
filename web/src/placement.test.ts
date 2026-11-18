@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Hero, HeroStatus, TimelineEntry } from '../../shared/types'
-import { CELEBRATE_MS, EXPLORE_MS, SLEEP_MS, activeProjects, placeHeroes, victoryLine } from './placement'
+import { ARENA_GRACE_MS, CELEBRATE_MS, EXPLORE_MS, SLEEP_MS, activeProjects, placeHeroes, victoryLine } from './placement'
 
 const NOW = 10_000_000
 
@@ -73,12 +73,24 @@ describe('activeProjects', () => {
     const heroes = [
       hero('a', 'working', 0, { room: 'loja' }),
       hero('b', 'waiting', 0, { room: 'blog' }),
-      hero('c', 'idle', 1_000, { room: 'recente', party: [{ id: 'x', cls: 'ladino', status: 'working', action: '', toolCalls: 1 }] as unknown as Hero['party'] }),
-      hero('f', 'idle', 1_000, { room: 'descansando' }),
+      hero('c', 'idle', ARENA_GRACE_MS + 1, { room: 'recente', party: [{ id: 'x', cls: 'ladino', status: 'working', action: '', toolCalls: 1 }] as unknown as Hero['party'] }),
+      hero('f', 'idle', ARENA_GRACE_MS + 1, { room: 'descansando' }),
       hero('d', 'idle', CELEBRATE_MS + 1, { room: 'parado' }),
       hero('e', 'offline', 0, { room: 'fora' }),
     ]
-    expect([...activeProjects(heroes)].sort()).toEqual(['blog', 'loja', 'recente'])
+    expect([...activeProjects(heroes, NOW)].sort()).toEqual(['blog', 'loja', 'recente'])
+  })
+
+  it('keeps the arena for a moment after the fight ends, so the fighters can walk out', () => {
+    const stoppedAgo = (ms: number): Partial<Hero> => ({ room: 'loja', timeline: [{ ts: NOW - ms, kind: 'stop', text: '' }] })
+    expect([...activeProjects([hero('a', 'idle', 1_000, stoppedAgo(1_000))], NOW)]).toEqual(['loja'])
+    expect([...activeProjects([hero('a', 'idle', ARENA_GRACE_MS, stoppedAgo(ARENA_GRACE_MS))], NOW)]).toEqual([])
+    expect([...activeProjects([hero('a', 'offline', 0, { room: 'loja' })], NOW)]).toEqual([])
+  })
+
+  it('gives no arena to a fresh session that has not fought (recent event, no stop)', () => {
+    const fresh = hero('a', 'idle', 1_000, { room: 'loja', timeline: [{ ts: NOW - 1_000, kind: 'session', text: '' }] })
+    expect([...activeProjects([fresh], NOW)]).toEqual([])
   })
 })
 

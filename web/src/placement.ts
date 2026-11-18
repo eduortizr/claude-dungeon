@@ -15,6 +15,8 @@ import type { Hero } from '../../shared/types'
 export const CELEBRATE_MS = 2 * 60_000
 export const EXPLORE_MS = 10 * 60_000
 export const SLEEP_MS = 25 * 60_000
+/** How long an arena stays after its fight ends, so the fighters walk out instead of the room vanishing under them. */
+export const ARENA_GRACE_MS = 20_000
 
 export type Place =
   | { kind: 'project'; room: string; index: number }
@@ -26,13 +28,18 @@ export type Place =
 
 /**
  * Which projects need an arena: the ones with a fight going on (a hero at work, waiting for the user, or with
- * a party member out on a mission). A project whose sessions are only resting has no arena: it would stand
- * empty, push the fights off the screen and make the map look deserted.
+ * a party member out on a mission), plus the ones whose last `stop` was less than ARENA_GRACE_MS ago. A project
+ * whose sessions are only resting has no arena: it would stand empty, push the fights off the screen and make
+ * the map look deserted.
  */
-export function activeProjects(heroes: readonly Hero[]): Set<string> {
+export function activeProjects(heroes: readonly Hero[], now: number): Set<string> {
   const active = new Set<string>()
   for (const hero of heroes) {
-    if (hero.status === 'working' || hero.status === 'waiting' || (hero.status !== 'offline' && hero.party.some(m => m.status === 'working'))) {
+    const fighting = hero.status === 'working' || hero.status === 'waiting' || hero.party.some(m => m.status === 'working')
+    // Only a fight that just ended counts: a fresh session with no fight (SessionStart) gets no arena.
+    const lastStop = [...hero.timeline].reverse().find(e => e.kind === 'stop')
+    const justEnded = lastStop !== undefined && now - lastStop.ts < ARENA_GRACE_MS
+    if (hero.status !== 'offline' && (fighting || justEnded)) {
       active.add(hero.room)
     }
   }

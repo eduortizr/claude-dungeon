@@ -244,7 +244,8 @@ const TRAINING: Record<(typeof GUILD_MEMBERS)[number], { target: [number, number
   bardo: { target: [8, 6], stand: [8, 8], kind: 'archery' },
 }
 
-export function buildMap(projects: readonly string[]): GameMap {
+/** `minCols`: the map is never narrower than this; the extra space on the right is filled with rock like any other empty space. */
+export function buildMap(projects: readonly string[], options: { minCols?: number } = {}): GameMap {
   const own = projects.filter(p => !PROJECT_HOMES.has(p))
   const named = [...GUILD_ROOMS, ...own.map(name => ({ kind: 'project' as RoomKind, name, project: undefined }))]
   const roomCount = Math.max(MIN_ROOMS, named.length)
@@ -258,7 +259,7 @@ export function buildMap(projects: readonly string[]): GameMap {
     roomX.push(cursor[side]!)
     cursor[side] = cursor[side]! + roomW[i]! + 1
   }
-  const cols = Math.max(cursor[0]!, cursor[1]!) + 1
+  const cols = Math.max(Math.max(cursor[0]!, cursor[1]!) + 1, options.minCols ?? 0)
   const corridorY = 1 + ROOM_H
   const dungeonRows = corridorY + CORRIDOR_H + ROOM_H + 1
   const forestY = dungeonRows - 1

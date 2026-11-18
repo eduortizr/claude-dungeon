@@ -6,6 +6,7 @@
 import { GUILD, type ClassId } from '../../shared/guild'
 import type { MissionRecord } from '../../shared/types'
 import { ago, count, duration, escapeHtml, modelName } from './format'
+import { levelFor, progress } from './progression'
 import { spriteUrl } from './sprites'
 
 /** Tab order: the main sessions first, then the guild, then outsiders. */
@@ -96,9 +97,11 @@ export class ChroniclePanel {
             ${TABS.map(id => {
               const c = GUILD[id]
               const n = byClass.get(id)?.length ?? 0
+              const lv = levelFor(this.xp(byClass.get(id) ?? []))
               return `<button class="chronicle-tab${id === this.tab ? ' active' : ''}" data-tab="${id}">
                 <img src="${spriteUrl(c.sprite, 2)}" alt="">
                 <span style="color:${c.color}">${c.name}</span>
+                <span class="chip" title="Nível da classe">Nv ${lv}</span>
                 <span class="chip">${n}</span>
               </button>`
             }).join('')}
@@ -125,15 +128,21 @@ export class ChroniclePanel {
       </div>`
   }
 
+  private xp(records: MissionRecord[]): number {
+    return records.reduce((n, r) => n + r.toolCalls, 0)
+  }
+
   private stats(records: MissionRecord[]): string {
     if (records.length === 0) return ''
-    const hits = records.reduce((n, r) => n + r.toolCalls, 0)
+    const hits = this.xp(records)
+    const level = progress(hits)
     const time = records.reduce((n, r) => n + Math.max(0, r.endedAt - r.startedAt), 0)
     const failed = records.filter(r => r.status === 'failed').length
     const projects = new Map<string, number>()
     for (const r of records) projects.set(r.project, (projects.get(r.project) ?? 0) + 1)
     const favorite = [...projects].sort((a, b) => b[1] - a[1])[0]
     return `<dl class="chronicle-stats">
+      <div><dt>Nível</dt><dd>${level.level}${level.span ? ` <span class="muted">${level.into}/${level.span}</span>` : ''}</dd></div>
       <div><dt>Missões</dt><dd>${count(records.length)}</dd></div>
       <div><dt>Golpes</dt><dd>${count(hits)}</dd></div>
       <div><dt>Tempo em campo</dt><dd>${duration(time)}</dd></div>

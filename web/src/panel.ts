@@ -8,6 +8,7 @@ import { CUSTOM_SPRITES } from './characters'
 import { ago, clock, count, duration, escapeHtml, modelName } from './format'
 import type { ResidentId } from './map'
 import type { Place } from './placement'
+import { heroXp, progress } from './progression'
 import { spriteUrl } from './sprites'
 
 const TIMELINE_STEP = 15
@@ -154,6 +155,8 @@ export class Panel {
     const working = hero.party.filter(m => m.status === 'working').length
     const timeline = hero.timeline.slice(-this.shown).reverse()
     const usage = hero.stats.usage
+    const level = progress(heroXp(hero))
+    const xpText = level.span === 0 ? 'nível máximo' : `${level.into} / ${level.span} XP`
 
     this.root.innerHTML = `
       <header class="panel-head">
@@ -162,6 +165,11 @@ export class Panel {
           <h2>${escapeHtml(hero.name)}</h2>
           <p class="role">${GUILD.mestre.name}${hero.model ? ` · ${escapeHtml(modelName(hero.model))}` : ''}</p>
           <p class="room">🏰 ${escapeHtml(hero.room)}</p>
+          <div class="level" title="XP = golpes do herói + 5 por subagente que voltou">
+            <span class="level-tag">Nv ${level.level}</span>
+            <span class="xpbar"><span style="width:${Math.round(level.fraction * 100)}%"></span></span>
+            <span class="muted">${xpText}</span>
+          </div>
         </div>
         <button class="close" data-close aria-label="Fechar">✕</button>
       </header>

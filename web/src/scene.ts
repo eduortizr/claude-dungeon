@@ -44,6 +44,7 @@ import {
 import { buildMap, ROOM_H, type GameMap, type ResidentId, type RoomLayout } from './map'
 import type { Point } from './pathfinding'
 import { activeProjects, placeHeroes, victoryLine, type Place } from './placement'
+import { classXp, critChance, heroXp, levelFor, power, tier } from './progression'
 import { GROUND_PROPS, TARGETS, drawDragon, drawProp } from './props'
 import { guildActivity, type Activity } from './routine'
 import { WALKERS, drawDuck, drawFish, drawWalker, duckAt, fishAt, walkerAt } from './wildlife'
@@ -195,8 +196,9 @@ export class Scene {
   sync(world: WorldState, now = Date.now()): boolean {
     this.world = world
     const heroes = Object.values(world.heroes).sort((a, b) => a.startedAt - b.startedAt || a.id.localeCompare(b.id))
-    const mapChanged = this.syncRooms(heroes)
+    const mapChanged = this.syncRooms(heroes, now)
     if (mapChanged) {
+      this.rescueStranded()
       this.placeTrainees()
       this.placeResidents()
     }
@@ -214,6 +216,7 @@ export class Scene {
       const place = this.places.get(hero.id) ?? { kind: 'gone' }
       this.goToPlace(actor, hero, place, mapChanged, enter)
       this.syncBubble(actor, hero)
+      this.setLevel(actor, levelFor(heroXp(hero)))
       if (hero.hits > actor.hitsSeen) {
         actor.hitsSeen = hero.hits
         this.strike(actor, hero.room)
@@ -222,6 +225,10 @@ export class Scene {
       members.push(() => this.syncParty(hero, actor, enter))
     }
     for (const syncMembers of members) syncMembers()
+    // The training room's residents wear their class's level too.
+    for (const actor of this.actors.values()) {
+      if (actor.id.startsWith('treino/') && actor.cls) this.setLevel(actor, levelFor(classXp(world.chronicle, actor.cls)))
+    }
 
     // Fighters' slots are handed out in a stable order, so nobody swaps places.
     for (const [roomName, actors] of inRoom) {
@@ -310,6 +317,8 @@ export class Scene {
         this.actors.set(key, actor)
       }
       enter(hero.room, actor)
+      // The class's past missions (the chronicle) plus the blows of this one, which is not in it yet.
+      this.setLevel(actor, levelFor(classXp(this.world.chronicle, member.cls) + member.toolCalls))
       if (member.toolCalls > actor.hitsSeen) {
         actor.hitsSeen = member.toolCalls
         this.strike(actor, hero.room)
@@ -320,12 +329,13 @@ export class Scene {
     }
   }
 
-  private syncRooms(heroes: Hero[]): boolean {
-    const active = activeProjects(heroes)
+  private syncRooms(heroes: Hero[], now: number): boolean {
+    const active = activeProjects(heroes, now)
     const next = [...this.projects.filter(p => active.has(p)), ...[...active].filter(p => !this.projects.includes(p))]
     if (next.join('\n') === this.projects.join('\n')) return false
     this.projects = next
-    const map = buildMap(next)
+    // The map never gets narrower while the app is open: the view's zoom and position stay put.
+    const map = buildMap(next, { minCols: this.map.cols })
     const changed = map.cols !== this.map.cols || map.rooms.length !== this.map.rooms.length || this.roomNames(map) !== this.roomNames(this.map)
     if (!changed) return false // a project that lives in a guild room: same map
     this.map = map
@@ -334,6 +344,53 @@ export class Scene {
     this.shakeUntil.clear()
     this.doors.clear() // keyed by tile index, which a new width changes
     return true
+  }
+
+  /** After the map changed: anyone standing where there is no floor now goes to the nearest walkable tile (or the spawn), or `findPath` finds nothing. */
+  private rescueStranded(): void {
+    for (const actor of this.actors.values()) {
+      const tile = actor.tile
+      if (this.map.isWalkable(tile.x, tile.y)) continue
+      actor.teleport(this.nearestWalkable(tile))
+    }
+  }
+
+  /** Searches in square rings of growing radius around `from`; the closest walkable tile of the first ring that has one. */
+  private nearestWalkable(from: Point): Point {
+    const limit = Math.max(this.map.cols, this.map.rows)
+    for (let r = 1; r <= limit; r++) {
+      let best: Point | undefined
+      let bestDistance = Infinity
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue
+          const x = from.x + dx
+          const y = from.y + dy
+          const distance = dx * dx + dy * dy
+          if (distance < bestDistance && this.map.isWalkable(x, y)) {
+            best = { x, y }
+            bestDistance = distance
+          }
+        }
+      }
+      if (best) return best
+    }
+    return { ...this.map.spawn }
+  }
+
+  /** Records the actor's level; a rise (after the first reading) plays the level-up effect. */
+  private setLevel(actor: Actor, level: number): void {
+    actor.level = level
+    const before = actor.shownLevel
+    actor.shownLevel = Math.max(before, level) // a dip (a party member removed) must not fire again when it comes back
+    if (before === 0 || level <= before || actor.isHidden) return
+    const x = actor.x + 0.5
+    const y = actor.y + 0.5
+    this.effects.push({ kind: 'levelup', x, y: actor.y, age: 0, ttl: 1.6, text: `NÍVEL ${level}!` })
+    this.burst(x, y, '#ffd34d', 0.9, 2)
+    this.burst(x, y - 0.3, '#ffffff', 0.7, 1.5)
+    const room = actor.heroId ? this.world.heroes[actor.heroId]?.room : undefined
+    if (room) this.shakeUntil.set(room, this.time + 0.2)
   }
 
   private roomNames(map: GameMap): string {
@@ -481,20 +538,28 @@ export class Scene {
     actor.attack(monster.at)
     actor.act(true)
     monster.flash = 0.12
-    monster.hp--
+    const level = actor.level || 1
+    const isCrit = Math.random() < critChance(level)
+    const size = 1 + 0.18 * tier(level) // slash and pixels grow with the tier; the number a bit more
+    monster.hp -= power(level) * (isCrit ? 2 : 1)
     const mx = monster.at.x + 0.5
     const my = monster.at.y
-    this.effects.push({ kind: 'slash', x: mx, y: my + 0.5, age: 0, ttl: 0.25 })
-    this.burst(mx + (Math.random() - 0.5) * 0.5, my + 0.4, actor.isMember ? actor.color : '#ffe9a0')
+    this.effects.push({ kind: 'slash', x: mx, y: my + 0.5, age: 0, ttl: 0.25 + 0.04 * tier(level), scale: size })
+    this.burst(mx + (Math.random() - 0.5) * 0.5, my + 0.4, actor.isMember ? actor.color : '#ffe9a0', 0.45 + 0.06 * tier(level), size)
+    const shown = 3 + Math.floor(Math.random() * 13) + 2 * (level - 1)
     this.effects.push({
       kind: 'damage',
       x: mx + (Math.random() - 0.5) * 0.6,
       y: my,
       age: 0,
-      ttl: 0.9,
-      text: String(3 + Math.floor(Math.random() * 13)),
-      color: actor.isMember ? actor.color : '#ffd34d',
+      ttl: 0.9 + 0.1 * tier(level),
+      text: String(isCrit ? shown * 2 : shown),
+      color: isCrit ? '#ff9a2e' : actor.isMember ? actor.color : '#ffd34d',
+      scale: size + 0.12 + (isCrit ? 0.35 : 0),
     })
+    if (isCrit) {
+      this.effects.push({ kind: 'damage', x: mx, y: my - 0.45, age: 0, ttl: 1.1, text: 'CRÍTICO!', color: '#ff4d4d', scale: 1.45, outline: true })
+    }
     if (monster.hp <= 0) {
       monster.respawnIn = 1.2
       monster.kills++
@@ -511,8 +576,8 @@ export class Scene {
   }
 
   /** A handful of little squares flying out of a hit. */
-  private burst(x: number, y: number, color: string, ttl = 0.45): void {
-    this.effects.push({ kind: 'burst', x, y, age: 0, ttl, color })
+  private burst(x: number, y: number, color: string, ttl = 0.45, scale = 1): void {
+    this.effects.push({ kind: 'burst', x, y, age: 0, ttl, color, scale })
   }
 
   /**
@@ -1335,6 +1400,7 @@ export class Scene {
             ctx.ellipse(actor.x * T + 8, actor.y * T + 15, 7, 3, 0, 0, Math.PI * 2)
             ctx.stroke()
           }
+          if (tier(actor.level || 1) >= 2) this.drawAura(ctx, actor, px, py)
           if (actor.spot > 0) this.drawSpotlight(ctx, actor, px, py)
           drawSprite(ctx, actor.hurt > 0 ? this.white : this.sheet, actor.sprite, px, py, T, actor.facingLeft)
         },
@@ -1348,6 +1414,37 @@ export class Scene {
   /** The color of whoever acts: the class's, or gold for a hero. */
   private spotColor(actor: Actor): string {
     return actor.heroId && !actor.isMember ? '#ffd34d' : actor.color
+  }
+
+  /** Tier 2 and up: a glow pulsing on the floor under the actor, in their color; stronger and wider with each tier. */
+  private drawAura(ctx: CanvasRenderingContext2D, actor: Actor, px: number, py: number): void {
+    const steps = tier(actor.level) - 1 // 1..3
+    const pulse = 1 + Math.sin(this.time * 3 + actor.x) * 0.12
+    const radius = (9 + steps * 2) * pulse
+    ctx.save()
+    ctx.globalCompositeOperation = 'lighter'
+    ctx.globalAlpha = 0.28 + 0.08 * steps
+    ctx.fillStyle = this.spotColor(actor)
+    ctx.beginPath()
+    ctx.ellipse(px + 8, py + 15, radius, radius * 0.4, 0, 0, Math.PI * 2)
+    ctx.fill()
+    // A light ring around the glow.
+    ctx.globalAlpha = 0.45 + 0.1 * steps
+    ctx.strokeStyle = '#fff4d0'
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.ellipse(px + 8, py + 15, radius + 1.5, radius * 0.4 + 0.6, 0, 0, Math.PI * 2)
+    ctx.stroke()
+    // Tier 3 and up: sparks rising from the feet, each on its own phase.
+    if (steps >= 2) {
+      ctx.fillStyle = '#ffffff'
+      for (let k = 0; k < 3 + steps; k++) {
+        const phase = (this.time * 0.7 + k / (3 + steps) + actor.x * 0.37) % 1
+        ctx.globalAlpha = (1 - phase) * 0.9
+        ctx.fillRect(Math.round(px + 8 + Math.sin(k * 2.4 + phase * 4) * radius * 0.7), Math.round(py + 14 - phase * 20), 1, 2)
+      }
+    }
+    ctx.restore()
   }
 
   /** A pulsing ring and glow at the feet of whoever just acted, and an arrow over the one who struck. */
@@ -1404,7 +1501,7 @@ export class Scene {
         ctx.strokeStyle = `rgba(255, 255, 255, ${1 - t})`
         ctx.lineWidth = 1.5
         ctx.beginPath()
-        ctx.arc(px, py, 6 + t * 4, -Math.PI * 0.9 + t, -Math.PI * 0.1 + t)
+        ctx.arc(px, py, (6 + t * 4) * (effect.scale ?? 1), -Math.PI * 0.9 + t, -Math.PI * 0.1 + t)
         ctx.stroke()
       } else if (effect.kind === 'poof') {
         ctx.fillStyle = `rgba(220, 220, 230, ${1 - t})`
@@ -1443,17 +1540,30 @@ export class Scene {
       } else if (effect.kind === 'burst') {
         // Pixels flying out and falling; every third one is a bright spark.
         const base = effect.x * 7.3 + effect.y * 3.1
-        for (let k = 0; k < 9; k++) {
+        const scale = effect.scale ?? 1
+        for (let k = 0; k < Math.round(9 * scale); k++) {
           const angle = base + k * 0.7
-          const speed = 9 + ((k * 5) % 7) * 2.2
+          const speed = (9 + ((k * 5) % 7) * 2.2) * scale
           const x = px + Math.cos(angle) * speed * t
           const y = py + Math.sin(angle) * speed * t * 0.8 + t * t * 9
           ctx.globalAlpha = 1 - t * t
           ctx.fillStyle = k % 3 === 0 ? '#ffffff' : (effect.color ?? '#ffd34d')
-          const s = t < 0.55 ? 2 : 1
+          const s = t < 0.55 ? Math.round(2 * Math.min(scale, 1.5)) : 1
           ctx.fillRect(Math.round(x), Math.round(y), s, s)
         }
         ctx.globalAlpha = 1
+      } else if (effect.kind === 'levelup') {
+        // A column of golden light rising from the feet, fading as it goes.
+        const height = 58 * Math.min(1, t * 4)
+        const width = 13 * (1 - t * 0.6)
+        ctx.save()
+        ctx.globalCompositeOperation = 'lighter'
+        const column = ctx.createLinearGradient(0, py + 7 - height, 0, py + 7)
+        column.addColorStop(0, 'rgba(255, 211, 77, 0)')
+        column.addColorStop(1, `rgba(255, 220, 120, ${0.6 * (1 - t)})`)
+        ctx.fillStyle = column
+        ctx.fillRect(px - width / 2 + 0.5, py + 7 - height, width, height)
+        ctx.restore()
       } else if (effect.kind === 'note') {
         const x = Math.round(px + Math.sin(t * 5) * 4)
         const y = Math.round(py - t * 28)
@@ -1632,12 +1742,23 @@ export class Scene {
 
     // Name tags and speech bubbles.
     const font = Math.max(14, Math.min(19, z * 5))
-    for (const actor of [...this.actors.values()].sort((a, b) => a.y - b.y)) {
+    // Tags are stacked downward when two would overlap (two actors side by side): the lower / righter one moves down.
+    const tags: { left: number; right: number; top: number; bottom: number }[] = []
+    for (const actor of [...this.actors.values()].sort((a, b) => a.y - b.y || a.x - b.x)) {
       if (actor.isHidden) continue
       const feet = camera.toScreen((actor.x + 0.5) * T, (actor.y + 1) * T)
       ctx.font = `${actor.isMember ? 600 : 700} ${actor.isMember ? font - 1 : font}px "VT323", monospace`
-      const width = ctx.measureText(actor.label).width + 16
+      const tag = actor.level > 0 ? `${actor.label} · Nv ${actor.level}` : actor.label
+      const width = ctx.measureText(tag).width + 16
       const lit = actor.spot > 0
+      for (let tries = 0; tries < 6; tries++) {
+        const clash = tags.find(
+          r => feet.x - width / 2 - 2 < r.right && feet.x + width / 2 + 2 > r.left && feet.y - 1 < r.bottom && feet.y + font + 9 > r.top,
+        )
+        if (!clash) break
+        feet.y = clash.bottom + 1
+      }
+      tags.push({ left: feet.x - width / 2, right: feet.x + width / 2, top: feet.y + 1, bottom: feet.y + font + 7 })
       if (lit) {
         // Whoever just acted: the tag lights up in their color.
         ctx.fillStyle = this.spotColor(actor)
@@ -1650,11 +1771,19 @@ export class Scene {
       ctx.arc(feet.x - width / 2 + 7, feet.y + 4 + font / 2, 3, 0, Math.PI * 2)
       ctx.fill()
       ctx.fillStyle = lit ? '#120d16' : '#fff'
-      ctx.fillText(actor.label, feet.x + 4, feet.y + 4 + font / 2)
+      ctx.fillText(tag, feet.x + 4, feet.y + 4 + font / 2)
     }
 
     // Bubbles last, stacked upward when two would overlap (heroes stand close in a room).
     const placed: { left: number; right: number; top: number; bottom: number }[] = []
+    // The room's monsters are obstacles too: a bubble over a monster moves up to sit above it.
+    for (const monster of this.monsters.values()) {
+      if (!monster.isAlive) continue
+      const size = monster.isBoss ? 2 : 1
+      const a = camera.toScreen(monster.at.x * T, monster.at.y * T)
+      const b = camera.toScreen((monster.at.x + size) * T, (monster.at.y + size) * T)
+      placed.push({ left: a.x, right: b.x, top: a.y, bottom: b.y })
+    }
     for (const actor of [...this.actors.values()].sort((a, b) => b.y - a.y)) {
       const bubble = actor.bubble
       if (!bubble || bubble.until <= this.time || actor.isHidden) continue
@@ -1688,15 +1817,34 @@ export class Scene {
         ctx.globalAlpha = 1
         continue
       }
+      if (effect.kind === 'levelup') {
+        const t = effect.age / effect.ttl
+        const p = camera.toScreen(effect.x * T, (effect.y - t * 1.4) * T)
+        ctx.globalAlpha = Math.min(1, (1 - t) * 2)
+        ctx.font = `700 ${Math.round(font * 1.9)}px "VT323", monospace`
+        ctx.fillStyle = '#120d16'
+        ctx.fillText(effect.text ?? '', p.x + 2, p.y - 24 + 2)
+        ctx.fillStyle = '#ffd34d'
+        ctx.fillText(effect.text ?? '', p.x, p.y - 24)
+        ctx.globalAlpha = 1
+        continue
+      }
       if (effect.kind !== 'damage' && effect.kind !== 'xp') continue
       const t = effect.age / effect.ttl
       const p = camera.toScreen(effect.x * T, effect.y * T)
       ctx.globalAlpha = 1 - t * t
-      ctx.font = `700 ${font + (effect.kind === 'xp' ? 2 : 0)}px "VT323", monospace`
+      ctx.font = `700 ${Math.round(font * (effect.scale ?? 1)) + (effect.kind === 'xp' ? 2 : 0)}px "VT323", monospace`
+      const rise = p.y - t * 24 * (z / 3)
+      if (effect.outline) {
+        ctx.lineJoin = 'round'
+        ctx.lineWidth = 5
+        ctx.strokeStyle = '#120d16'
+        ctx.strokeText(effect.text ?? '', p.x, rise)
+      }
       ctx.fillStyle = '#120d16'
-      ctx.fillText(effect.text ?? '', p.x + 1, p.y - t * 24 * (z / 3) + 1)
+      ctx.fillText(effect.text ?? '', p.x + 1, rise + 1)
       ctx.fillStyle = effect.kind === 'xp' ? '#7dff9b' : effect.color ?? '#ffd34d'
-      ctx.fillText(effect.text ?? '', p.x, p.y - t * 24 * (z / 3))
+      ctx.fillText(effect.text ?? '', p.x, rise)
       ctx.globalAlpha = 1
     }
   }

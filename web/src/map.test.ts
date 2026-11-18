@@ -4,6 +4,23 @@ import { ARENA_W, buildMap } from './map'
 import { FLOOR } from './tiles'
 import { findPath } from './pathfinding'
 
+describe('buildMap minCols', () => {
+  it('widens the map with unwalkable rock and keeps the rooms', () => {
+    const base = buildMap(['a'])
+    const wide = buildMap(['a'], { minCols: base.cols + 30 })
+    expect(wide.cols).toBe(base.cols + 30)
+    expect(wide.rooms.map(r => [r.name, r.x, r.w])).toEqual(base.rooms.map(r => [r.name, r.x, r.w]))
+    for (let y = 0; y < wide.rows; y++) {
+      for (let x = base.cols; x < wide.cols; x++) expect(wide.floor[y * wide.cols + x]).not.toBe(-1)
+    }
+    expect(wide.isWalkable(wide.cols - 1, 1)).toBe(false)
+  })
+
+  it('does not shrink below what the rooms need', () => {
+    expect(buildMap(['a', 'b'], { minCols: 5 }).cols).toBe(buildMap(['a', 'b']).cols)
+  })
+})
+
 describe('buildMap', () => {
   it('puts the guild rooms first, then one room per project, at least six rooms', () => {
     expect(buildMap([]).rooms.map(r => r.kind)).toEqual(['taverna', 'jogos', 'treino', 'estudos', 'tesouro', 'sealed'])

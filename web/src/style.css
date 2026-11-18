@@ -665,3 +665,28 @@ img {
     display: none;
   }
 }
+
+.level {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.level-tag {
+  color: var(--waiting);
+  font-weight: 700;
+}
+
+.xpbar {
+  flex: 0 0 90px;
+  height: 7px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+}
+
+.xpbar > span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--gold), var(--waiting));
+}
