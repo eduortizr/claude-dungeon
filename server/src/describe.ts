@@ -3,6 +3,7 @@
  * and in the timeline ("Lendo o pergaminho state.ts").
  */
 import { GUILD, classOfAgentType } from '../../shared/guild'
+import { redact } from './redact'
 
 const MAX = 48
 
@@ -13,11 +14,11 @@ export function truncate(text: string, max = MAX): string {
 
 function fileName(path: unknown): string {
   if (typeof path !== 'string' || path === '') return 'um pergaminho'
-  return path.split(/[\\/]/).filter(Boolean).pop() ?? path
+  return redact(path.split(/[\\/]/).filter(Boolean).pop() ?? path)
 }
 
 function str(value: unknown): string {
-  return typeof value === 'string' ? value : ''
+  return typeof value === 'string' ? redact(value) : ''
 }
 
 export function describeTool(tool: string, input: Record<string, unknown> = {}): string {

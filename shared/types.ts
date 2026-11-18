@@ -123,7 +123,7 @@ export interface WorldState {
 
 /** One finished mission, for the Crônicas: a subagent that came back, or a main session that finished a prompt. */
 export interface MissionRecord {
-  /** `<session>/<member>` for a subagent, `<session>#<n>` for a main session's prompt. */
+  /** `<session>/<member>` for a subagent, `<session>#<when its work began>` for a main session's prompt. */
   id: string
   cls: ClassId
   /** The subagent type as called (`guild:ladino`, `Explore`, `ladino-pesquisador`); `mestre` for a main session. */

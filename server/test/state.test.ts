@@ -44,6 +44,24 @@ describe('reduce', () => {
     expect(hero(resting).timeline.at(-1)?.text).toMatch(/^Missão concluída em \d+s$/)
   })
 
+  it('keeps the user mission when the harness sends a subagent report as a turn', () => {
+    const state = run(
+      ev('UserPromptSubmit', { prompt: 'corrige o login' }),
+      ev('Stop'),
+      ev('UserPromptSubmit', { prompt: '<agent-message from="a4c76">\n[Subagent hand-back] ...' }),
+      ev('Stop'),
+    )
+    const prompts = hero(state).timeline.filter(e => e.kind === 'prompt')
+    expect(prompts.map(e => e.text)).toEqual(['Nova missão: "corrige o login"'])
+    expect(hero(state).stats.prompts).toBe(1)
+    expect(state.chronicle?.at(-1)?.description).toBe('corrige o login')
+  })
+
+  it('still treats a pasted HTML prompt as a new mission', () => {
+    const state = run(ev('UserPromptSubmit', { prompt: '<div class="a">quebrou</div> arruma' }))
+    expect(hero(state).stats.prompts).toBe(1)
+  })
+
   it('describes tool calls and counts them as hits', () => {
     const state = run(
       ev('UserPromptSubmit'),
@@ -209,5 +227,22 @@ describe('chronicle', () => {
 
   it('does not record a Stop with no mission in progress', () => {
     expect(run(ev('SessionStart'), ev('Stop')).chronicle).toEqual([])
+  })
+})
+
+describe('privacy', () => {
+  it('cleans paths and secrets before they reach the hero and the timeline', () => {
+    const state = run(
+      ev('SessionStart'),
+      ev('PreToolUse', {
+        tool_name: 'Bash',
+        tool_input: { command: 'curl -H "Authorization: Bearer sk-abc" C:/Users/duduo/x' },
+      }),
+      ev('UserPromptSubmit', { prompt: 'usa API_KEY=segredo em /c/Users/duduo/proj' }),
+    )
+    const texts = [hero(state).action, ...hero(state).timeline.map(e => e.text)].join('\n')
+    expect(texts).not.toMatch(/duduo|sk-abc|segredo/)
+    expect(texts).toContain('•••')
+    expect(texts).toContain('~')
   })
 })

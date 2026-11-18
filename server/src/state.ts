@@ -6,6 +6,7 @@
 import { GUILD, classOfAgentType, heroNameFor, heroSpriteFor } from '../../shared/guild'
 import type { Hero, HookEvent, MissionRecord, PartyMember, TimelineEntry, TimelineKind, WorldState } from '../../shared/types'
 import { describeTool, truncate } from './describe'
+import { redact } from './redact'
 
 export const TIMELINE_LIMIT = 100
 export const PARTY_LIMIT = 12
@@ -57,6 +58,12 @@ function log(hero: Hero, ts: number, kind: TimelineKind, text: string, memberId?
   if (hero.timeline.length > TIMELINE_LIMIT) hero.timeline.splice(0, hero.timeline.length - TIMELINE_LIMIT)
 }
 
+/** A turn the harness wrote, not the user: `<agent-message …>`, `<task-notification>` and the like. */
+export function isHarnessMessage(prompt: string | undefined): boolean {
+  // Harness tags have a hyphen; plain HTML a user pastes (`<div>`) does not.
+  return /^\s*<[a-z][a-z0-9]*-[\w-]*[\s>]/i.test(prompt ?? '')
+}
+
 function startWorking(hero: Hero, ts: number): void {
   if (hero.status !== 'working') {
     hero.workingSince = ts
@@ -97,7 +104,7 @@ function memberFromCall(event: HookEvent): PartyMember {
     type,
     cls,
     model,
-    description: typeof input.description === 'string' ? input.description : 'missão sem nome',
+    description: typeof input.description === 'string' ? redact(input.description) : 'missão sem nome',
     status: 'working',
     action: 'A caminho da dungeon',
     toolCalls: 0,
@@ -119,8 +126,14 @@ function applyEvent(hero: Hero, event: HookEvent): void {
     case 'UserPromptSubmit':
       startWorking(hero, ts)
       hero.action = THINKING
+      // Messages the harness injects as a turn (a subagent's report, a task notification) start with a tag:
+      // they carry on the mission the user gave, they are not a new one, and their raw text is not a quest name.
+      if (isHarnessMessage(event.prompt)) {
+        log(hero, ts, 'notice', 'Recebeu o relatório de um aliado')
+        break
+      }
       hero.stats.prompts++
-      log(hero, ts, 'prompt', `Nova missão: "${truncate(event.prompt ?? '', 70)}"`)
+      log(hero, ts, 'prompt', `Nova missão: "${truncate(redact(event.prompt ?? ''), 70)}"`)
       break
 
     case 'PreToolUse': {
@@ -233,7 +246,7 @@ function applyEvent(hero: Hero, event: HookEvent): void {
     case 'route':
       if (event.route) {
         const to = GUILD[classOfAgentType(event.route.to)].name
-        log(hero, ts, 'route', `Roteador enviou o ${to}: ${event.route.description} (${event.route.reason})`)
+        log(hero, ts, 'route', `Roteador enviou o ${to}: ${redact(event.route.description)} (${redact(event.route.reason)})`)
       }
       break
 
@@ -292,10 +305,10 @@ function finishedMissions(before: Hero | undefined, after: Hero, event: HookEven
   if (event.event === 'Stop' && before?.workingSince !== undefined) {
     const prompt = [...after.timeline].reverse().find(e => e.kind === 'prompt' && !e.memberId)
     records.push({
-      id: `${after.id}#${after.stats.prompts}`,
+      id: `${after.id}#${before.workingSince}`,
       cls: 'mestre',
       type: 'mestre',
-      description: prompt?.text.replace(/^Nova missão: /, '').replace(/^"|"$/g, '') ?? 'Missão',
+      description: redact(prompt?.text.replace(/^Nova missão: /, '').replace(/^"|"$/g, '') ?? 'Missão'),
       project: after.room,
       hero: after.name,
       model: after.model ?? null,
