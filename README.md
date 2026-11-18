@@ -31,6 +31,29 @@ Veja suas sessões do [Claude Code](https://claude.com/claude-code) como uma gui
   - **linha do tempo**;
   - **estatísticas**: chamadas, tokens, modelo, duração.
 
+## Níveis
+
+Herói e classe da guilda sobem de nível com os golpes que dão.
+
+- **XP = golpes** (chamadas de ferramenta). O herói soma os golpes da sessão e mais 5 por subagente que voltou; ele sobe de nível durante a sessão.
+- **Classe**: soma os golpes das missões da classe nas Crônicas, então o nível continua de um dia para o outro.
+- **Curva**: o nível L começa em `10·L·(L−1)/2` XP, com teto no nível 20:
+
+| Nível | XP para chegar |
+| --- | --- |
+| 2 | 10 |
+| 3 | 30 |
+| 5 | 100 |
+| 10 | 450 |
+| 20 | 1900 |
+
+- **Dano**: cada golpe tira `1 + floor((L−1)/3)` de vida do monstro (no nível 4, 2; no nível 7, 3).
+- **Crítico**: chance de 5% + 1% por nível (no máximo 25%). O golpe crítico dobra o dano.
+- **Efeitos**: crescem por faixa de nível, com números de dano maiores, mais faíscas e uma aura no chão a partir do nível 7. Ao subir de nível, aparece uma coluna de luz com "NÍVEL N!".
+- **Onde ver**: "Nv N" na etiqueta, a barra de XP no painel do herói e o nível de cada classe nas Crônicas.
+
+As regras ficam numa função pura e testada, em [`web/src/progression.ts`](web/src/progression.ts).
+
 ## Inteligência direcionada: a guilda
 
 Além de mostrar, o projeto **decide quem faz o quê**, como no [ruflo](https://github.com/ruvnet/ruflo): cada tipo de tarefa vai para uma classe especializada, cada uma num modelo escolhido pelo custo e benefício daquele trabalho.
@@ -79,11 +102,15 @@ flowchart LR
   - O estado sai de um **reducer puro** (`reduce(state, event) → state`), testado sem rede nem disco.
   - No fim de cada resposta, ele lê o transcript da sessão para somar tokens e descobrir o modelo.
   - O estado é salvo em disco (`%APPDATA%\Claude Dungeon\world.json` no app, `data/world.json` no modo dev).
+  - **Privacidade:** todo texto que vai para o mapa (comandos, pedidos, descrições de missão) passa por `redact()` (`server/src/redact.ts`, testada): a pasta do usuário vira `~` e senhas, tokens e chaves conhecidas (`sk-`, `ghp_`, AWS, JWT, chave privada…) viram `•••`. Dá para gravar o mapa sem expor nada.
+  - Mensagens que o próprio Claude Code injeta como turno (relatório de subagente, notificação de tarefa) não viram "Nova missão".
 - **`web/`**: Canvas 2D sem engine de jogo.
   - O mapa é gerado a partir dos projetos ativos (determinístico, com PRNG semeado), com as salas da guilda na frente.
   - Para onde cada herói vai é uma função pura (`placement.ts`), separada do desenho e testada.
   - Os heróis andam com **A\*** (heap binário, heurística de Manhattan).
-  - O zoom é inteiro, para o pixel ficar nítido. Os balões se empilham quando se sobrepõem.
+  - O zoom é inteiro, para o pixel ficar nítido. Os balões e as etiquetas se empilham quando se sobrepõem.
+  - Com o app aberto, o zoom só muda pela roda do mouse ou pelo tamanho da janela, e o mapa não encolhe: quando uma arena aparece, a câmera só desliza até ela.
+  - Níveis, dano e crítico são funções puras em `progression.ts`.
 - **`desktop/`**: app Electron. Roda o servidor dentro dele, mostra o mapa numa janela e fica na bandeja do sistema.
 - **`shared/`**: tipos e a tabela da guilda, usados pelo servidor, pelo mapa e pelo app.
 
@@ -143,7 +170,7 @@ A partir daí, toda sessão nova aparece no mapa enquanto o app (ou o `npm run d
 ## Testes
 
 ```bash
-npm test         # Vitest: roteador, reducer, servidor HTTP, transcript, A*, mapa, salas, jogos
+npm test         # Vitest (153 testes): roteador, reducer, privacidade, servidor HTTP, transcript, A*, mapa, câmera, salas, níveis, jogos
 npm run typecheck
 ```
 
